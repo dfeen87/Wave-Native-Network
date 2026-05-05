@@ -9,6 +9,8 @@
 #include "wave_state.hpp"
 #include "interceptor/phy_listener.hpp"
 #include "ambient_verifier.hpp"
+#include "calibration.hpp"
+#include <string.h>
 
 using namespace wave_native;
 
@@ -24,8 +26,14 @@ int main(int argc, char** argv) {
     std::signal(SIGTERM, signal_handler);
 
     std::string interface = "eth0"; // Default interface
-    if (argc > 1) {
-        interface = argv[1];
+    bool calibrate_mode = false;
+
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--calibrate") == 0) {
+            calibrate_mode = true;
+        } else {
+            interface = argv[i];
+        }
     }
 
     std::cout << "Starting Wavefront Daemon on interface: " << interface << "\n";
@@ -37,9 +45,28 @@ int main(int argc, char** argv) {
     // Initialize the Trust Layer Gatekeeper wrapper
     core::AmbientVerifier verifier;
 
+    double omega = 1.2;
+    double alpha = -1.0;
+    double beta = 1.0;
+    double delta = 0.3;
+
+    if (calibrate_mode) {
+        core::CalibrationMode calib;
+        if (calib.run_sweep(omega)) {
+            std::cout << "[SUCCESS] Hardware Resonance Found at ω = " << omega << ". Locking Phase.\n";
+            core::CalibrationMode::save_profile("wnp_hw_profile.bin", omega, alpha, beta, delta);
+        }
+    } else {
+        if (core::CalibrationMode::load_profile("wnp_hw_profile.bin", omega, alpha, beta, delta)) {
+            std::cout << "[INFO] Loaded hardware profile: ω = " << omega << "\n";
+        } else {
+            std::cout << "[WARNING] No hardware profile found. Using defaults.\n";
+        }
+    }
+
     // Initialize our Duffing Oscillator engine and local state
-    core::DuffingOscillator duffing(0.3, -1.0, 1.0, 0.5);
-    core::WaveState state(0.1, 0.0, 1.2, 0.0, 0.0);
+    core::DuffingOscillator duffing(delta, alpha, beta, 0.5);
+    core::WaveState state(0.1, 0.0, omega, 0.0, 0.0);
 
     const double dt = 0.01; // Time step for RK4
 
@@ -72,6 +99,9 @@ int main(int argc, char** argv) {
 
             // Perturb the state velocity with the physical network wave
             state.x_dot += phys_amp * 0.1 * dt;
+
+            // Entropy-to-Phase Synchronization (Nudge)
+            state.theta += phys_amp * 0.05 * dt; // Nudge the phase angle based on raw bitstream
 
             // Step the Duffing oscillator
             duffing.step(state, dt);
