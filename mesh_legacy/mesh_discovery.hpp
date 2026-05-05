@@ -56,11 +56,11 @@ namespace mesh_legacy {
         // Drops connection ruthlessly if verification fails. Returns true only on full success.
         bool process_incoming_peer(const std::vector<uint8_t>& phase_signature,
                                    const struct ZKProof& proof,
-                                   const std::vector<uint8_t>& public_inputs,
-                                   const struct AileeTrustScore& score);
+                                   struct AileeTrustScore& score);
 
     private:
         std::shared_ptr<class ZKVerifier> verifier_;
+        std::map<std::vector<uint8_t>, std::vector<double>> drift_history_;
     };
 
     class InterfaceDiscovery {
