@@ -30,14 +30,13 @@ namespace mesh_legacy {
         }
     };
 
-    struct ExecutionTrace {
-        std::string module_hash;
-        std::string function_name;
-        std::vector<uint8_t> inputs;
-        std::vector<uint8_t> outputs;
-        uint64_t execution_time_ms;
-        uint64_t gas_used;
-        uint64_t timestamp;
+    struct AileeTrustScore {
+        double confidence_score;
+        double safety_score;
+        double consistency_score;
+        double determinism_score;
+
+        double aggregate_score() const;
     };
 
     class ZKVerifier {
@@ -46,6 +45,7 @@ namespace mesh_legacy {
         static std::unique_ptr<ZKVerifier> create(const VerificationKey& verification_key);
 
         bool verify_proof(const ZKProof& proof, const std::vector<uint8_t>& public_inputs) const;
+        bool verify_ailee_trust(const ZKProof& proof, const std::vector<uint8_t>& public_inputs, const AileeTrustScore& score) const;
         size_t proof_size(const ZKProof& proof) const;
 
     private:
