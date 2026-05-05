@@ -10,6 +10,7 @@
 #include "interceptor/phy_listener.hpp"
 #include "ambient_verifier.hpp"
 #include "calibration.hpp"
+#include "pll_controller.hpp"
 #include <string.h>
 
 using namespace wave_native;
@@ -68,11 +69,15 @@ int main(int argc, char** argv) {
     core::DuffingOscillator duffing(delta, alpha, beta, 0.5);
     core::WaveState state(0.1, 0.0, omega, 0.0, 0.0);
 
+    // Initialize PLL Controller
+    core::PllController pll(omega);
+
     const double dt = 0.01; // Time step for RK4
 
     auto last_tick = std::chrono::steady_clock::now();
     uint64_t tick_count = 0;
 
+    // run_physics_engine loop
     while (global_running) {
         auto now = std::chrono::steady_clock::now();
         std::chrono::duration<double> elapsed = now - last_tick;
@@ -86,7 +91,21 @@ int main(int argc, char** argv) {
 
             // 2. Trust Validation - analyze signal entropy
             verifier.analyze_signal_entropy(stream);
+
+            // PLL Update step
+            double omega_corrected = pll.step(stream, state.theta, dt);
+
+            // Check for break lock and quarantine
+            if (std::abs(pll.get_phase_error()) > M_PI / 2.0) {
+                verifier.trigger_quarantine();
+            } else if (pll.is_locked()) {
+                verifier.set_pll_locked(true);
+            }
+
             double trust_score = verifier.get_physical_integrity_score();
+
+            // Update dynamic frequency
+            state.omega = omega_corrected;
 
             // 3. RK4 Duffing Step - this is where we "resonate" with the physical layer
             // We use the mean amplitude of the ingested stream to drive the forcing frequency
@@ -114,6 +133,9 @@ int main(int argc, char** argv) {
                           << " | Vel(x'): " << state.x_dot
                           << " | Stream Size: " << stream.size()
                           << " | AILEE Integrity: " << (trust_score * 100.0) << "%"
+                          << " | PLL Lock: " << (pll.is_locked() ? "LOCKED" : "SEARCHING")
+                          << " | Δθ: " << pll.get_phase_error()
+                          << " | ω: " << state.omega
                           << std::endl;
             }
         } else {

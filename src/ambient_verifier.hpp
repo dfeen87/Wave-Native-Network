@@ -23,7 +23,11 @@ public:
                      const mesh_legacy::ZKProof& proof,
                      mesh_legacy::AileeTrustScore& score);
 
+    void set_pll_locked(bool locked);
+    void trigger_quarantine();
+
 private:
+    bool is_pll_locked_;
     std::shared_ptr<mesh_legacy::ZKVerifier> zk_verifier_;
     std::shared_ptr<mesh_legacy::PeerGatekeeper> gatekeeper_;
 
