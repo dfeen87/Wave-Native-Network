@@ -2,6 +2,7 @@
 #include "mesh_discovery.hpp"
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 
 namespace wave_native {
 namespace mesh_legacy {
@@ -67,16 +68,24 @@ namespace mesh_legacy {
     bool InterfaceDiscovery::use_mock_interfaces() {
         if (!registry_ || !gatekeeper_) return false;
 
-        // Mock a peer attempting to connect
         std::vector<uint8_t> mock_phase_signature = {0x01, 0x02, 0x03};
-        std::vector<uint8_t> mock_proof_data = {0xaa, 0xbb, 0xcc};
-        std::vector<uint8_t> mock_public_inputs = {0x00};
-        ZKProof mock_proof(mock_proof_data, mock_public_inputs, "mock_circuit");
 
-        AileeTrustScore good_score = {0.8, 0.9, 0.8, 0.9}; // High enough to pass aggregate 0.70 threshold
+        // Compute expected state for omega=1.0 to generate a passing mock_proof
+        double dt = 0.01;
+        double t_end = 1.0;
+        double x = 0.0, v = 0.0;
+        double delta = 0.1, alpha = -1.0, beta = 1.0, F = 0.3, omega = 1.0;
+        for (double t = 0; t < t_end; t += dt) {
+            double a = F * std::cos(omega * t) - delta * v - alpha * x - beta * x * x * x;
+            x += v * dt;
+            v += a * dt;
+        }
 
-        if (gatekeeper_->process_incoming_peer(mock_phase_signature, mock_proof, mock_public_inputs, good_score)) {
-            // Only if it passes, do we register
+        // Good proof: amplitude=x, phase_angle=0, frequency=1.0, velocity=v
+        ZKProof mock_proof(x, 0.0, 1.0, v);
+        AileeTrustScore good_score = {0.8, 0.9, 0.8, 0.9};
+
+        if (gatekeeper_->process_incoming_peer(mock_phase_signature, mock_proof, good_score)) {
             InterfaceInfo eth0;
             eth0.name = "eth0";
             eth0.iface_type = InterfaceType::Ethernet;
@@ -86,8 +95,10 @@ namespace mesh_legacy {
             registry_->register_interface(eth0);
         }
 
-        AileeTrustScore bad_score = {0.2, 0.1, 0.3, 0.2}; // Fails aggregate threshold
-        if (gatekeeper_->process_incoming_peer(mock_phase_signature, mock_proof, mock_public_inputs, bad_score)) {
+        // Bad proof that fails threshold
+        ZKProof bad_proof(100.0, 0.0, 1.0, 100.0);
+        AileeTrustScore bad_score = {0.2, 0.1, 0.3, 0.2};
+        if (gatekeeper_->process_incoming_peer(mock_phase_signature, bad_proof, bad_score)) {
             InterfaceInfo wlan0;
             wlan0.name = "wlan0";
             wlan0.iface_type = InterfaceType::WiFi;
@@ -105,21 +116,55 @@ namespace mesh_legacy {
 
     bool PeerGatekeeper::process_incoming_peer(const std::vector<uint8_t>& phase_signature,
                                                const ZKProof& proof,
-                                               const std::vector<uint8_t>& public_inputs,
-                                               const AileeTrustScore& score) {
-        // Step 1: Immediately pause connection processing (implied by this synchronous, blocking validation step)
+                                               AileeTrustScore& score) {
         if (phase_signature.empty()) {
-            return false; // Ruthlessly drop
-        }
-
-        // Step 2 & 3: Strict Enforcement and AILEE integration
-        // The incoming peer MUST supply a valid ZKProof and pass the AILEE strict threshold (0.70).
-        if (!verifier_ || !verifier_->verify_ailee_trust(proof, public_inputs, score)) {
-            // Ruthlessly and silently drop the connection. No fallback, no retry loop.
             return false;
         }
 
-        // Step 4: Accept
+        double drift = 0.0;
+        if (!verifier_ || !verifier_->verify_proof(proof, drift)) {
+            return false;
+        }
+
+        double epsilon = verifier_->get_epsilon();
+
+        // Determinism
+        score.determinism_score = 1.0 - (drift / epsilon);
+
+        // Consistency
+        auto& history = drift_history_[phase_signature];
+        history.push_back(drift);
+        if (history.size() > 3) {
+            history.erase(history.begin());
+        }
+
+        if (history.size() >= 2) {
+            double mean = 0.0;
+            for (double d : history) mean += d;
+            mean /= history.size();
+
+            double variance = 0.0;
+            for (double d : history) variance += (d - mean) * (d - mean);
+            variance /= (history.size() - 1);
+
+            double stddev = std::sqrt(variance);
+            score.consistency_score = std::max(0.0, 1.0 - stddev);
+        } else {
+            score.consistency_score = 1.0;
+        }
+
+        // Confidence
+        double driving_omega = 1.0;
+        if (std::abs(proof.frequency - driving_omega) < 0.05) {
+            score.confidence_score = 1.0;
+        } else {
+            score.confidence_score = 0.0;
+        }
+
+        if (score.aggregate_score() < 0.70) {
+            return false; // Phase Decoloration
+        }
+
         return true;
     }
 

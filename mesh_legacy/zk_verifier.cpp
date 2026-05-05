@@ -1,23 +1,13 @@
 #include "zk_verifier.hpp"
 #include <iostream>
+#include <cmath>
+#include <algorithm>
 
 namespace wave_native {
 namespace mesh_legacy {
 
-    ZKVerifier::ZKVerifier(VerificationKey verification_key)
-        : verification_key_(std::move(verification_key)) {}
-
-    std::unique_ptr<ZKVerifier> ZKVerifier::create(const VerificationKey& verification_key) {
-        // In a real implementation with cryptographic libraries:
-        // Attempt to deserialize the verification key.
-        // If it fails, return nullptr.
-
-        if (verification_key.key_data.empty()) {
-            // Mock failure condition for invalid key data
-            return nullptr;
-        }
-
-        return std::unique_ptr<ZKVerifier>(new ZKVerifier(verification_key));
+    std::unique_ptr<ZKVerifier> ZKVerifier::create() {
+        return std::unique_ptr<ZKVerifier>(new ZKVerifier());
     }
 
     double AileeTrustScore::aggregate_score() const {
@@ -33,40 +23,33 @@ namespace mesh_legacy {
         return std::max(0.0, std::min(1.0, agg));
     }
 
-    bool ZKVerifier::verify_proof(const ZKProof& proof, const std::vector<uint8_t>& public_inputs) const {
-        // Mock verification logic.
-        // In a real implementation:
-        // 1. Deserialize proof from proof.proof_data
-        // 2. Deserialize public_inputs into Fr elements
-        // 3. Verify using Groth16::verify(verification_key_, public_inputs_fe, ark_proof)
+    bool ZKVerifier::verify_proof(const ZKProof& proof, double& out_drift) const {
+        // Forward-integrated simulation of Duffing Equation
+        // ẍ + δẋ + αx + βx³ = F cos(ωt)
+        double dt = 0.01;
+        double t_end = 1.0;
 
-        if (proof.proof_data.empty()) {
-            return false;
+        double local_x = 0.0;
+        double local_v = 0.0;
+
+        double delta = 0.1;
+        double alpha = -1.0;
+        double beta = 1.0;
+        double F = 0.3;
+        double omega = proof.frequency;
+
+        for (double t = 0; t < t_end; t += dt) {
+            double a = F * std::cos(omega * t) - delta * local_v - alpha * local_x - beta * local_x * local_x * local_x;
+            local_x += local_v * dt;
+            local_v += a * dt;
         }
 
-        // Simulating the check for 2 public inputs (module_hash and input_hash)
-        // as seen in the Rust code, though here we just return true for the stub.
-        if (public_inputs.empty()) {
-            return false;
-        }
+        double peer_x = proof.amplitude * std::cos(proof.phase_angle);
+        double peer_v = proof.velocity;
 
-        return true;
-    }
+        out_drift = std::sqrt(std::pow(local_x - peer_x, 2) + std::pow(local_v - peer_v, 2));
 
-    bool ZKVerifier::verify_ailee_trust(const ZKProof& proof, const std::vector<uint8_t>& public_inputs, const AileeTrustScore& score) const {
-        if (!verify_proof(proof, public_inputs)) {
-            return false;
-        }
-
-        if (score.aggregate_score() < 0.70) {
-            return false;
-        }
-
-        return true;
-    }
-
-    size_t ZKVerifier::proof_size(const ZKProof& proof) const {
-        return proof.size();
+        return out_drift <= get_epsilon();
     }
 
 } // namespace mesh_legacy

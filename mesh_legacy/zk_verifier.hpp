@@ -9,25 +9,14 @@
 namespace wave_native {
 namespace mesh_legacy {
 
-    struct VerificationKey {
-        std::vector<uint8_t> key_data;
-    };
-
     struct ZKProof {
-        std::vector<uint8_t> proof_data;
-        std::vector<uint8_t> public_inputs;
-        std::string circuit_id;
-        std::string proof_system;
+        double amplitude;
+        double phase_angle;
+        double frequency;
+        double velocity;
 
-        ZKProof(std::vector<uint8_t> p_data, std::vector<uint8_t> p_inputs, std::string c_id)
-            : proof_data(std::move(p_data)),
-              public_inputs(std::move(p_inputs)),
-              circuit_id(std::move(c_id)),
-              proof_system("groth16-bn254") {}
-
-        size_t size() const {
-            return proof_data.size();
-        }
+        ZKProof(double a, double p, double f, double v)
+            : amplitude(a), phase_angle(p), frequency(f), velocity(v) {}
     };
 
     struct AileeTrustScore {
@@ -41,20 +30,13 @@ namespace mesh_legacy {
 
     class ZKVerifier {
     public:
-        // Returns nullptr if verification key is invalid
-        static std::unique_ptr<ZKVerifier> create(const VerificationKey& verification_key);
+        static std::unique_ptr<ZKVerifier> create();
 
-        bool verify_proof(const ZKProof& proof, const std::vector<uint8_t>& public_inputs) const;
-        bool verify_ailee_trust(const ZKProof& proof, const std::vector<uint8_t>& public_inputs, const AileeTrustScore& score) const;
-        size_t proof_size(const ZKProof& proof) const;
+        bool verify_proof(const ZKProof& proof, double& out_drift) const;
+        double get_epsilon() const { return 0.1; }
 
     private:
-        explicit ZKVerifier(VerificationKey verification_key);
-
-        VerificationKey verification_key_;
-
-        // In a real implementation, this would hold the parsed Arkworks Groth16 VerificationKey
-        // e.g., ark_groth16::VerifyingKey<ark_bn254::Bn254> ark_vk_;
+        ZKVerifier() = default;
     };
 
 } // namespace mesh_legacy
