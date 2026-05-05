@@ -20,6 +20,19 @@ namespace mesh_legacy {
         return std::unique_ptr<ZKVerifier>(new ZKVerifier(verification_key));
     }
 
+    double AileeTrustScore::aggregate_score() const {
+        const double SAFETY_WEIGHT = 0.35;
+        const double CONSISTENCY_WEIGHT = 0.30;
+        const double CONFIDENCE_WEIGHT = 0.20;
+        const double DETERMINISM_WEIGHT = 0.15;
+
+        double agg = (safety_score * SAFETY_WEIGHT) +
+                     (consistency_score * CONSISTENCY_WEIGHT) +
+                     (confidence_score * CONFIDENCE_WEIGHT) +
+                     (determinism_score * DETERMINISM_WEIGHT);
+        return std::max(0.0, std::min(1.0, agg));
+    }
+
     bool ZKVerifier::verify_proof(const ZKProof& proof, const std::vector<uint8_t>& public_inputs) const {
         // Mock verification logic.
         // In a real implementation:
@@ -34,6 +47,18 @@ namespace mesh_legacy {
         // Simulating the check for 2 public inputs (module_hash and input_hash)
         // as seen in the Rust code, though here we just return true for the stub.
         if (public_inputs.empty()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool ZKVerifier::verify_ailee_trust(const ZKProof& proof, const std::vector<uint8_t>& public_inputs, const AileeTrustScore& score) const {
+        if (!verify_proof(proof, public_inputs)) {
+            return false;
+        }
+
+        if (score.aggregate_score() < 0.70) {
             return false;
         }
 

@@ -7,6 +7,8 @@
 #include <shared_mutex>
 #include <optional>
 
+#include "zk_verifier.hpp"
+
 namespace wave_native {
 namespace mesh_legacy {
 
@@ -24,14 +26,9 @@ namespace mesh_legacy {
         InterfaceType iface_type;
         bool is_up;
         bool has_carrier;
-        bool has_address;
-        uint32_t mtu;
-        std::optional<std::string> mac_address;
-        std::vector<std::string> ipv4_addresses;
-        std::vector<std::string> ipv6_addresses;
 
         bool is_wan_candidate() const {
-            return is_up && has_carrier && has_address && iface_type != InterfaceType::Unknown;
+            return is_up && has_carrier && iface_type != InterfaceType::Unknown;
         }
     };
 
@@ -51,15 +48,31 @@ namespace mesh_legacy {
         std::map<std::string, InterfaceInfo> interfaces_;
     };
 
+    class PeerGatekeeper {
+    public:
+        explicit PeerGatekeeper(std::shared_ptr<class ZKVerifier> verifier);
+
+        // Immediately parses the connection, verifies the proof and the trust score.
+        // Drops connection ruthlessly if verification fails. Returns true only on full success.
+        bool process_incoming_peer(const std::vector<uint8_t>& phase_signature,
+                                   const struct ZKProof& proof,
+                                   const std::vector<uint8_t>& public_inputs,
+                                   const struct AileeTrustScore& score);
+
+    private:
+        std::shared_ptr<class ZKVerifier> verifier_;
+    };
+
     class InterfaceDiscovery {
     public:
-        explicit InterfaceDiscovery(std::shared_ptr<InterfaceRegistry> registry);
+        explicit InterfaceDiscovery(std::shared_ptr<InterfaceRegistry> registry, std::shared_ptr<PeerGatekeeper> gatekeeper);
 
         void start_monitoring();
         bool discover_interfaces();
 
     private:
         std::shared_ptr<InterfaceRegistry> registry_;
+        std::shared_ptr<PeerGatekeeper> gatekeeper_;
 
         // Mock method for discovering interfaces.
         bool discover_linux_interfaces();
