@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
     auto last_tick = start_time;
     uint64_t tick_count = 0;
 
-    std::atomic<double> shared_ts{0.0};
+    std::atomic<long double> shared_ts{0.0L};
 
     // Pruning Background Thread
     std::jthread pruning_thread([&peer_table, &shared_ts](std::stop_token stoken) {
@@ -123,8 +123,6 @@ int main(int argc, char** argv) {
         std::chrono::duration<long double> elapsed = now - last_tick;
 
         if (elapsed.count() >= dt) {
-            tick_count++;
-            last_tick = start_time + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<long double>(tick_count * dt));
             state.ts = tick_count * dt; // Strict temporal hardening derived from monotonic clock without jitter
 
             // 1. Ingest raw physical noise and IAT stream
@@ -206,6 +204,9 @@ int main(int argc, char** argv) {
 
             // Propagate Wave-State through Adaptive Mesh
             router.propagate_state(state, stream);
+
+            tick_count++;
+            last_tick = start_time + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<long double>(tick_count * dt));
 
             // Print status every ~1 second (100 ticks at 0.01s dt)
             if (tick_count % 100 == 0) {

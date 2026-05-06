@@ -3,6 +3,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 namespace wave_native {
 namespace mesh_legacy {
@@ -148,7 +149,7 @@ namespace mesh_legacy {
         std::vector<double> windowed_stream(stream.size());
         size_t N = stream.size();
         for (size_t i = 0; i < N; ++i) {
-            double hann_multiplier = 0.5 * (1.0 - std::cos(2.0 * M_PI * i / (N - 1)));
+            double hann_multiplier = 0.5 * (1.0 - std::cos(2.0 * std::numbers::pi * i / (N - 1)));
             windowed_stream[i] = stream[i] * hann_multiplier;
         }
 
@@ -224,7 +225,7 @@ namespace mesh_legacy {
                     crossings++;
                 }
             }
-            double estimated_omega = (crossings * M_PI) / (windowed_stream.size() * dt);
+            double estimated_omega = (crossings * std::numbers::pi) / (windowed_stream.size() * dt);
             std::lock_guard<std::mutex> lock(cand_mutex_);
             candidate_frequency_ = estimated_omega;
         } else {
@@ -313,7 +314,8 @@ namespace mesh_legacy {
         if (is_trusted) {
             if (agg_score < 0.65) {
                 drift_history_.erase(phase_signature);
-                trust_state_[phase_signature] = false;
+                trust_state_.erase(phase_signature);
+                ema_consistency_.erase(phase_signature);
                 return false; // Drop-out
             }
         } else {
