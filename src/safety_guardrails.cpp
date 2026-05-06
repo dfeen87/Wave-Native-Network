@@ -5,10 +5,20 @@
 namespace wave_native {
 namespace core {
 
-SafetyGuardrails::SafetyGuardrails(RoutingEngine* routing_engine, PllController* pll, DuffingOscillator* duffing)
+SafetyGuardrails::SafetyGuardrails(RoutingEngine* routing_engine, PllController* pll, DuffingOscillator* duffing, SafetyMode mode)
     : routing_engine_(routing_engine), pll_(pll), duffing_(duffing),
       baseline_variance_(0.0), baseline_established_(false),
-      current_safety_score_(1.0), go_dark_active_(false), recovery_counter_(0) {
+      current_safety_score_(1.0), go_dark_active_(false), recovery_counter_(0), safety_mode_(mode) {
+    if (safety_mode_ == SafetyMode::STRICT) {
+        s_crit_ = 0.40;
+        omega_thresh_ = 2.5;
+    } else if (safety_mode_ == SafetyMode::RELAXED) {
+        s_crit_ = 0.15;
+        omega_thresh_ = 4.5;
+    } else if (safety_mode_ == SafetyMode::OFF) {
+        s_crit_ = 0.0;
+        omega_thresh_ = 2.5;
+    }
 }
 
 void SafetyGuardrails::process_iat_samples(const std::vector<double>& iats) {
@@ -63,7 +73,7 @@ void SafetyGuardrails::process_iat_samples(const std::vector<double>& iats) {
     current_safety_score_ = std::max(0.0, std::min(1.0, s));
 
     // 3. The "Go-Dark" Protocol
-    if (!go_dark_active_ && current_safety_score_ < s_crit_) {
+    if (safety_mode_ != SafetyMode::OFF && !go_dark_active_ && current_safety_score_ < s_crit_) {
         std::cout << "\n[SAFETY] Carrier Opacity Detected (Ω=" << std::fixed << std::setprecision(2) << omega << "). Entering Deep Stealth.\n";
 
         routing_engine_->set_transduction_allowed(false);

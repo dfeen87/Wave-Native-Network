@@ -10,13 +10,14 @@
 #include "routing_engine.hpp"
 #include "pll_controller.hpp"
 #include "wave_state.hpp"
+#include "config/wnn_config.hpp"
 
 namespace wave_native {
 namespace core {
 
 class SafetyGuardrails {
 public:
-    SafetyGuardrails(RoutingEngine* routing_engine, PllController* pll, DuffingOscillator* duffing);
+    SafetyGuardrails(RoutingEngine* routing_engine, PllController* pll, DuffingOscillator* duffing, SafetyMode mode = SafetyMode::STRICT);
 
     // Process a batch of newly observed Inter-Arrival Times (IAT)
     void process_iat_samples(const std::vector<double>& iats);
@@ -36,9 +37,10 @@ private:
     bool baseline_established_;
 
     double current_safety_score_;
-    const double omega_thresh_ = 2.5;
+    double omega_thresh_ = 2.5;
     const double kappa_ = 2.0; // Sensitivity constant
-    const double s_crit_ = 0.40;
+    double s_crit_ = 0.40;
+    SafetyMode safety_mode_;
 
     bool go_dark_active_;
     size_t recovery_counter_;
