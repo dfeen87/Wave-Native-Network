@@ -7,6 +7,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <pcap.h>
+#include <memory>
 
 namespace wave_native {
 namespace interceptor {

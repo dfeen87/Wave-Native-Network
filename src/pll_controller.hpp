@@ -12,7 +12,7 @@ public:
     // Update the PLL loop with a new batch of amplitude samples from the PHY listener
     // and the current local phase (theta_local)
     // Returns the corrected frequency (omega_corrected)
-    double step(const std::vector<double>& stream, double theta_local, double dt, double ts);
+    double step(const std::vector<double>& stream, double theta_local, long double dt, long double ts);
 
     bool is_locked() const;
     double get_phase_error() const;

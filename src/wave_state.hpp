@@ -8,12 +8,13 @@
 namespace wave_native {
 namespace core {
 
-inline double generate_phase_salt(double ts, double omega) {
-    uint64_t epoch = static_cast<uint64_t>(std::floor(ts / 2.5));
+inline long double generate_phase_salt(long double ts, long double omega) {
+    uint64_t epoch = static_cast<uint64_t>(std::floor(ts / 2.5L));
     uint64_t w_bits;
-    std::memcpy(&w_bits, &omega, sizeof(omega));
+    double omega_d = static_cast<double>(omega);
+    std::memcpy(&w_bits, &omega_d, sizeof(omega_d));
     uint64_t hash = std::hash<uint64_t>{}(epoch ^ w_bits);
-    return (hash % 1000) * 1e-5;
+    return (hash % 1000) * 1e-5L;
 }
 
 struct WaveState {
@@ -53,7 +54,7 @@ public:
     }
 
     long double f2(long double t, long double x, long double v, long double omega) const {
-        return -delta_ * v - alpha_ * x - beta_ * x * x * x + gamma_ * std::cos((double)(omega * t));
+        return -delta_ * v - alpha_ * x - beta_ * x * x * x + gamma_ * std::cos(omega * t);
     }
 
     void step(WaveState& state, long double dt) {

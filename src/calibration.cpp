@@ -84,7 +84,7 @@ bool CalibrationMode::run_sweep(long double& out_omega) {
     return true;
 }
 
-bool CalibrationMode::save_profile(const std::string& path, double omega, double alpha, double beta, double delta) {
+bool CalibrationMode::save_profile(const std::string& path, long double omega, long double alpha, long double beta, long double delta) {
     std::ofstream out(path, std::ios::binary);
     if (!out) return false;
     out.write(reinterpret_cast<const char*>(&omega), sizeof(omega));

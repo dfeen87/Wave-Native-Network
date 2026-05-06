@@ -47,13 +47,20 @@ void PhyListener::stop() {
         pcap_breakloop(pcap_handle_.get());
     }
 
+    if (listener_thread_.joinable()) {
+        listener_thread_.request_stop();
+    }
+    if (injector_thread_.joinable()) {
+        injector_thread_.request_stop();
+    }
+
     injector_cv_.notify_all();
 
-
-
-    if (pcap_handle_) {
-
-
+    if (listener_thread_.joinable()) {
+        listener_thread_.join();
+    }
+    if (injector_thread_.joinable()) {
+        injector_thread_.join();
     }
 }
 

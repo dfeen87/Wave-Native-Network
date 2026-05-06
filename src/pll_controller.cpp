@@ -19,7 +19,7 @@ PllController::PllController(double omega_base)
       was_increasing_(true) {
 }
 
-double PllController::step(const std::vector<double>& stream, double theta_local, double dt, double ts) {
+double PllController::step(const std::vector<double>& stream, double theta_local, long double dt, long double ts) {
     double expected_salt = wave_native::core::generate_phase_salt(ts, omega_base_);
     double omega_active = omega_base_ + expected_salt;
 
