@@ -58,8 +58,10 @@ double PllController::step(const std::vector<double>& stream, double theta_local
         reset();
     } else {
         // Update integral accumulator with anti-windup
-        integral_accumulator_ += delta_theta_ * dt;
-        integral_accumulator_ = std::max(-i_limit_, std::min(i_limit_, integral_accumulator_));
+        if (!integral_frozen_) {
+            integral_accumulator_ += delta_theta_ * dt;
+            integral_accumulator_ = std::max(-i_limit_, std::min(i_limit_, integral_accumulator_));
+        }
 
         // Lock-in logic
         if (std::abs(delta_theta_) < lock_epsilon_) {

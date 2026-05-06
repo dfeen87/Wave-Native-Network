@@ -100,12 +100,37 @@ void PhyListener::packet_handler(u_char* user, const struct pcap_pkthdr* pkthdr,
         listener->amplitude_stream_.erase(listener->amplitude_stream_.begin(),
             listener->amplitude_stream_.begin() + (listener->amplitude_stream_.size() - 100000));
     }
+
+    // Calculate Inter-Arrival Time (IAT)
+    double iat_ns = 0.0;
+    if (listener->last_packet_time_.tv_sec != 0 || listener->last_packet_time_.tv_usec != 0) {
+        double current_sec = pkthdr->ts.tv_sec + pkthdr->ts.tv_usec / 1e6;
+        double last_sec = listener->last_packet_time_.tv_sec + listener->last_packet_time_.tv_usec / 1e6;
+        iat_ns = (current_sec - last_sec) * 1e9;
+    }
+    listener->last_packet_time_ = pkthdr->ts;
+
+    if (iat_ns > 0.0) {
+        std::lock_guard<std::mutex> iat_lock(listener->iat_mutex_);
+        listener->iat_stream_.push_back(iat_ns);
+        if (listener->iat_stream_.size() > 100000) {
+            listener->iat_stream_.erase(listener->iat_stream_.begin(),
+                listener->iat_stream_.begin() + (listener->iat_stream_.size() - 100000));
+        }
+    }
 }
 
 std::vector<double> PhyListener::consume_stream() {
     std::lock_guard<std::mutex> lock(stream_mutex_);
     std::vector<double> stream = std::move(amplitude_stream_);
     amplitude_stream_.clear();
+    return stream;
+}
+
+std::vector<double> PhyListener::consume_iats() {
+    std::lock_guard<std::mutex> lock(iat_mutex_);
+    std::vector<double> stream = std::move(iat_stream_);
+    iat_stream_.clear();
     return stream;
 }
 

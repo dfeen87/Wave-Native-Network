@@ -20,7 +20,16 @@ struct WaveState {
 class DuffingOscillator {
 public:
     DuffingOscillator(double damping = 0.3, double alpha = -1.0, double beta = 1.0, double gamma = 0.5)
-        : delta_(damping), alpha_(alpha), beta_(beta), gamma_(gamma) {}
+        : delta_(damping), alpha_(alpha), beta_(beta), gamma_(gamma), original_gamma_(gamma) {}
+
+    void set_ambient_mode(bool ambient) {
+        ambient_mode_ = ambient;
+        if (ambient_mode_) {
+            gamma_ = original_gamma_ * 0.01; // Scale down heavily for Low-Energy Ambient Mode
+        } else {
+            gamma_ = original_gamma_;
+        }
+    }
 
     // Duffing equation: x'' + delta * x' + alpha * x + beta * x^3 = gamma * cos(omega * t)
     // Here: x'' = -delta * x' - alpha * x - beta * x^3 + gamma * cos(omega * t)
@@ -69,6 +78,8 @@ private:
     double alpha_;
     double beta_;
     double gamma_;
+    double original_gamma_;
+    bool ambient_mode_ = false;
 };
 
 } // namespace core

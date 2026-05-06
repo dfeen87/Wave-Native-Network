@@ -20,6 +20,15 @@ public:
     // Trigger a manual reset (e.g., quarantine)
     void reset();
 
+    // AILEE Guardrails
+    void freeze_integral() {
+        integral_frozen_ = true;
+        integral_accumulator_ = 0.0;
+    }
+    void unfreeze_integral() {
+        integral_frozen_ = false;
+    }
+
 private:
     double omega_base_;
     double integral_accumulator_;
@@ -47,6 +56,8 @@ private:
     // To detect peaks
     double last_amp_;
     bool was_increasing_;
+
+    bool integral_frozen_ = false;
 };
 
 } // namespace core

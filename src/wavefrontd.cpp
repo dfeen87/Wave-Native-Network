@@ -12,6 +12,7 @@
 #include "calibration.hpp"
 #include "pll_controller.hpp"
 #include "routing_engine.hpp"
+#include "safety_guardrails.hpp"
 #include <string.h>
 #include <condition_variable>
 
@@ -77,6 +78,9 @@ int main(int argc, char** argv) {
     // Initialize Routing Engine
     core::RoutingEngine router(&phy);
 
+    // Initialize Safety Guardrails
+    core::SafetyGuardrails safety_guardrails(&router, &pll, &duffing);
+
     // Initialize Resonant Peer Table and Spectral Monitor
     mesh_legacy::ResonantPeerTable peer_table;
     mesh_legacy::AdaptiveSpectralMonitor spectral_monitor;
@@ -127,8 +131,12 @@ int main(int argc, char** argv) {
             last_tick = now;
             tick_count++;
 
-            // 1. Ingest raw physical noise
+            // 1. Ingest raw physical noise and IAT stream
             std::vector<double> stream = phy.consume_stream();
+            std::vector<double> iat_stream = phy.consume_iats();
+
+            // Safety Guardrails checking Opacity
+            safety_guardrails.process_iat_samples(iat_stream);
 
             // 2. Trust Validation - analyze signal entropy
             verifier.analyze_signal_entropy(stream);
@@ -207,6 +215,7 @@ int main(int argc, char** argv) {
                           << " | Vel(x'): " << state.x_dot
                           << " | Stream Size: " << stream.size()
                           << " | AILEE Integrity: " << (trust_score * 100.0) << "%"
+                          << " | Safety: " << (safety_guardrails.get_current_safety_score() * 100.0) << "%"
                           << " | PLL Lock: " << (pll.is_locked() ? "LOCKED" : "SEARCHING")
                           << " | Δθ: " << pll.get_phase_error()
                           << " | ω: " << state.omega
