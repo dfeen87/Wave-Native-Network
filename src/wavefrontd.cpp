@@ -13,6 +13,7 @@
 #include "pll_controller.hpp"
 #include "routing_engine.hpp"
 #include "safety_guardrails.hpp"
+#include "config/wnn_config.hpp"
 #include <string.h>
 #include <condition_variable>
 
@@ -29,18 +30,11 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
-    std::string interface = "eth0"; // Default interface
-    bool calibrate_mode = false;
+    core::WnnConfig config = core::WnnConfig::parse(argc, argv);
+    std::string interface = config.interface;
+    bool calibrate_mode = config.calibrate_mode;
 
-    for (int i = 1; i < argc; ++i) {
-        if (strcmp(argv[i], "--calibrate") == 0) {
-            calibrate_mode = true;
-        } else {
-            interface = argv[i];
-        }
-    }
-
-    std::cout << "Starting Wavefront Daemon on interface: " << interface << "\n";
+    std::cout << "[INIT] Wave-Native Network (WNN) bound to interface. Safety Mode: [" << config.safety_mode_to_string() << "].\n";
 
     // Initialize PHY Interceptor
     interceptor::PhyListener phy(interface);
@@ -79,7 +73,7 @@ int main(int argc, char** argv) {
     core::RoutingEngine router(&phy);
 
     // Initialize Safety Guardrails
-    core::SafetyGuardrails safety_guardrails(&router, &pll, &duffing);
+    core::SafetyGuardrails safety_guardrails(&router, &pll, &duffing, config.safety_mode);
 
     // Initialize Resonant Peer Table and Spectral Monitor
     mesh_legacy::ResonantPeerTable peer_table;
