@@ -11,6 +11,7 @@
 #include "ambient_verifier.hpp"
 #include "calibration.hpp"
 #include "pll_controller.hpp"
+#include "routing_engine.hpp"
 #include <string.h>
 #include <condition_variable>
 
@@ -72,6 +73,9 @@ int main(int argc, char** argv) {
 
     // Initialize PLL Controller
     core::PllController pll(omega);
+
+    // Initialize Routing Engine
+    core::RoutingEngine router(&phy);
 
     // Initialize Resonant Peer Table and Spectral Monitor
     mesh_legacy::ResonantPeerTable peer_table;
@@ -161,6 +165,9 @@ int main(int argc, char** argv) {
                 if (verifier.verify_peer(mock_sig, mock_proof, mock_score, psi_snr)) {
                     mesh_legacy::ResonantPeer new_peer{mock_sig, state.omega, psi_snr, mock_score, state.ts};
                     peer_table.insert_or_update(new_peer);
+
+                    // Add to routing engine
+                    router.add_or_update_peer(mock_sig, state.omega, mock_score);
                 }
             }
 
@@ -188,6 +195,9 @@ int main(int argc, char** argv) {
             duffing.step(state, dt);
 
             shared_ts.store(state.ts);
+
+            // Propagate Wave-State through Adaptive Mesh
+            router.propagate_state(state, stream);
 
             // Print status every ~1 second (100 ticks at 0.01s dt)
             if (tick_count % 100 == 0) {
