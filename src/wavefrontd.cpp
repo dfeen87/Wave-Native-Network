@@ -43,10 +43,10 @@ int main(int argc, char** argv) {
     // Initialize the Trust Layer Gatekeeper wrapper
     core::AmbientVerifier verifier;
 
-    double omega = 1.2;
-    double alpha = -1.0;
-    double beta = 1.0;
-    double delta = 0.3;
+    long double omega = 1.2L;
+    long double alpha = -1.0L;
+    long double beta = 1.0L;
+    long double delta = 0.3L;
 
     if (calibrate_mode) {
         core::CalibrationMode calib;
@@ -84,29 +84,30 @@ int main(int argc, char** argv) {
     std::vector<double> shared_stream;
     bool new_stream_ready = false;
 
-    const double dt = 0.01; // Time step for RK4
+    const long double dt = 0.01L; // Time step for RK4
 
-    auto last_tick = std::chrono::steady_clock::now();
+    auto start_time = std::chrono::steady_clock::now();
+    auto last_tick = start_time;
     uint64_t tick_count = 0;
 
     std::atomic<double> shared_ts{0.0};
 
     // Pruning Background Thread
-    std::thread pruning_thread([&peer_table, &shared_ts]() {
-        while (global_running) {
+    std::jthread pruning_thread([&peer_table, &shared_ts](std::stop_token stoken) {
+        while (!stoken.stop_requested() && global_running) {
             peer_table.prune_decayed_peers(shared_ts.load());
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
         }
     });
 
     // Spectral Scan Background Thread
-    std::thread spectral_thread([&]() {
-        while (global_running) {
+    std::jthread spectral_thread([&](std::stop_token stoken) {
+        while (!stoken.stop_requested() && global_running) {
             std::vector<double> local_stream;
             {
                 std::unique_lock<std::mutex> lock(stream_mutex);
-                stream_cv.wait_for(lock, std::chrono::milliseconds(100), [&]{ return new_stream_ready || !global_running; });
-                if (!global_running) break;
+                stream_cv.wait_for(lock, std::chrono::milliseconds(100), [&]{ return new_stream_ready || !global_running || stoken.stop_requested(); });
+                if (!global_running || stoken.stop_requested()) break;
                 if (!new_stream_ready) continue;
                 local_stream = shared_stream;
                 new_stream_ready = false;
@@ -119,11 +120,12 @@ int main(int argc, char** argv) {
     // run_physics_engine loop
     while (global_running) {
         auto now = std::chrono::steady_clock::now();
-        std::chrono::duration<double> elapsed = now - last_tick;
+        std::chrono::duration<long double> elapsed = now - last_tick;
 
         if (elapsed.count() >= dt) {
-            last_tick = now;
             tick_count++;
+            last_tick = start_time + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<long double>(tick_count * dt));
+            state.ts = tick_count * dt; // Strict temporal hardening derived from monotonic clock without jitter
 
             // 1. Ingest raw physical noise and IAT stream
             std::vector<double> stream = phy.consume_stream();
@@ -186,7 +188,7 @@ int main(int argc, char** argv) {
             // We use the mean amplitude of the ingested stream to drive the forcing frequency
             // or directly inject it as a perturbation. For simplicity, let's add the
             // instantaneous physical amplitude as an external forcing term to the state velocity.
-            double phys_amp = 0.0;
+            long double phys_amp = 0.0L;
             if (!stream.empty()) {
                 phys_amp = stream.back(); // Use the latest amplitude point
             }
@@ -228,13 +230,9 @@ int main(int argc, char** argv) {
     std::cout << "Stopping PHY listener...\n";
     phy.stop();
 
-    if (pruning_thread.joinable()) {
-        pruning_thread.join();
-    }
 
-    if (spectral_thread.joinable()) {
-        spectral_thread.join();
-    }
+
+
 
     std::cout << "Wavefront Daemon shutdown complete.\n";
 

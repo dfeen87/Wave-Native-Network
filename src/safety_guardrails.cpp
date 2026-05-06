@@ -77,6 +77,7 @@ void SafetyGuardrails::process_iat_samples(const std::vector<double>& iats) {
         std::cout << "\n[SAFETY] Carrier Opacity Detected (Ω=" << std::fixed << std::setprecision(2) << omega << "). Entering Deep Stealth.\n";
 
         routing_engine_->set_transduction_allowed(false);
+        routing_engine_->flush_transduction_queue();
         go_dark_active_ = true;
         recovery_counter_ = 0;
 

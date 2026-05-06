@@ -48,6 +48,9 @@ public:
 
     // AILEE Guardrails
     void set_transduction_allowed(bool allowed) { transduction_allowed_ = allowed; }
+    void flush_transduction_queue() {
+        if (phy_listener_) phy_listener_->flush_delay_queue();
+    }
     bool is_vector_a_viable() const;
 
 private:
