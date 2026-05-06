@@ -17,20 +17,20 @@ inline double generate_phase_salt(double ts, double omega) {
 }
 
 struct WaveState {
-    double A;   // Amplitude (x)
-    double theta; // Phase (not strictly part of standard duffing state, but kept for signature)
-    double omega; // Forcing frequency
-    double x_dot; // Velocity
-    double ts;  // Time
+    long double A;   // Amplitude (x)
+    long double theta; // Phase (not strictly part of standard duffing state, but kept for signature)
+    long double omega; // Forcing frequency
+    long double x_dot; // Velocity
+    long double ts;  // Time
 
-    WaveState() : A(0.0), theta(0.0), omega(1.2), x_dot(0.0), ts(0.0) {}
-    WaveState(double a, double th, double om, double xd, double t)
+    WaveState() : A(0.0L), theta(0.0L), omega(1.2L), x_dot(0.0L), ts(0.0L) {}
+    WaveState(long double a, long double th, long double om, long double xd, long double t)
         : A(a), theta(th), omega(om), x_dot(xd), ts(t) {}
 };
 
 class DuffingOscillator {
 public:
-    DuffingOscillator(double damping = 0.3, double alpha = -1.0, double beta = 1.0, double gamma = 0.5)
+    DuffingOscillator(long double damping = 0.3L, long double alpha = -1.0L, long double beta = 1.0L, long double gamma = 0.5L)
         : delta_(damping), alpha_(alpha), beta_(beta), gamma_(gamma), original_gamma_(gamma) {}
 
     void set_ambient_mode(bool ambient) {
@@ -48,36 +48,49 @@ public:
     // dx/dt = v
     // dv/dt = -delta * v - alpha * x - beta * x^3 + gamma * cos(omega * t)
 
-    double f1(double /*t*/, double /*x*/, double v) const {
+    long double f1(long double /*t*/, long double /*x*/, long double v) const {
         return v;
     }
 
-    double f2(double t, double x, double v, double omega) const {
-        return -delta_ * v - alpha_ * x - beta_ * x * x * x + gamma_ * std::cos(omega * t);
+    long double f2(long double t, long double x, long double v, long double omega) const {
+        return -delta_ * v - alpha_ * x - beta_ * x * x * x + gamma_ * std::cos((double)(omega * t));
     }
 
-    void step(WaveState& state, double dt) {
-        double t = state.ts;
-        double x = state.A;
-        double v = state.x_dot;
-        double omega = state.omega;
+    void step(WaveState& state, long double dt) {
+        long double t = state.ts;
+        long double x = state.A;
+        long double v = state.x_dot;
+        long double omega = state.omega;
 
-        double omega_active = omega + generate_phase_salt(t, omega);
+        long double omega_active = omega + generate_phase_salt(t, omega);
 
-        double k1_x = f1(t, x, v);
-        double k1_v = f2(t, x, v, omega_active);
+        long double k1_x = f1(t, x, v);
+        long double k1_v = f2(t, x, v, omega_active);
 
-        double k2_x = f1(t + 0.5 * dt, x + 0.5 * dt * k1_x, v + 0.5 * dt * k1_v);
-        double k2_v = f2(t + 0.5 * dt, x + 0.5 * dt * k1_x, v + 0.5 * dt * k1_v, omega_active);
+        long double k2_x = f1(t + 0.5L * dt, x + 0.5L * dt * k1_x, v + 0.5L * dt * k1_v);
+        long double k2_v = f2(t + 0.5L * dt, x + 0.5L * dt * k1_x, v + 0.5L * dt * k1_v, omega_active);
 
-        double k3_x = f1(t + 0.5 * dt, x + 0.5 * dt * k2_x, v + 0.5 * dt * k2_v);
-        double k3_v = f2(t + 0.5 * dt, x + 0.5 * dt * k2_x, v + 0.5 * dt * k2_v, omega_active);
+        long double k3_x = f1(t + 0.5L * dt, x + 0.5L * dt * k2_x, v + 0.5L * dt * k2_v);
+        long double k3_v = f2(t + 0.5L * dt, x + 0.5L * dt * k2_x, v + 0.5L * dt * k2_v, omega_active);
 
-        double k4_x = f1(t + dt, x + dt * k3_x, v + dt * k3_v);
-        double k4_v = f2(t + dt, x + dt * k3_x, v + dt * k3_v, omega_active);
+        long double k4_x = f1(t + dt, x + dt * k3_x, v + dt * k3_v);
+        long double k4_v = f2(t + dt, x + dt * k3_x, v + dt * k3_v, omega_active);
 
-        state.A = x + (dt / 6.0) * (k1_x + 2.0 * k2_x + 2.0 * k3_x + k4_x);
-        state.x_dot = v + (dt / 6.0) * (k1_v + 2.0 * k2_v + 2.0 * k3_v + k4_v);
+        long double update_x = (dt / 6.0L) * (k1_x + 2.0L * k2_x + 2.0L * k3_x + k4_x);
+        long double update_v = (dt / 6.0L) * (k1_v + 2.0L * k2_v + 2.0L * k3_v + k4_v);
+
+        // Kahan summation for A
+        long double y_A = update_x - c_A_;
+        long double t_A = state.A + y_A;
+        c_A_ = (t_A - state.A) - y_A;
+        state.A = t_A;
+
+        // Kahan summation for x_dot
+        long double y_v = update_v - c_v_;
+        long double t_v = state.x_dot + y_v;
+        c_v_ = (t_v - state.x_dot) - y_v;
+        state.x_dot = t_v;
+
         state.ts = t + dt;
 
         // Approximate phase, simplistic update based on angular velocity.
@@ -87,12 +100,14 @@ public:
     }
 
 private:
-    double delta_;
-    double alpha_;
-    double beta_;
-    double gamma_;
-    double original_gamma_;
+    long double delta_;
+    long double alpha_;
+    long double beta_;
+    long double gamma_;
+    long double original_gamma_;
     bool ambient_mode_ = false;
+    long double c_A_ = 0.0L;
+    long double c_v_ = 0.0L;
 };
 
 } // namespace core

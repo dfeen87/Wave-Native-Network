@@ -9,7 +9,7 @@ namespace wave_native {
 namespace interceptor {
 
 PhyListener::PhyListener(const std::string& interface_name)
-    : interface_name_(interface_name), pcap_handle_(nullptr), running_(false) {
+    : interface_name_(interface_name), pcap_handle_(nullptr, [](pcap_t* p){ if (p) pcap_close(p); }), running_(false) {
 }
 
 PhyListener::~PhyListener() {
@@ -25,50 +25,47 @@ void PhyListener::start() {
     // Snaplen 65535 to capture whole packets
     // Timeout 1ms (we want near real-time, but avoid burning 100% CPU purely on polling if possible,
     // though for continuous wave we will just sample as fast as it comes)
-    pcap_handle_ = pcap_open_live(interface_name_.c_str(), 65535, 1, 1, errbuf);
+    pcap_t* raw_pcap = pcap_open_live(interface_name_.c_str(), 65535, 1, 1, errbuf);
 
-    if (pcap_handle_ == nullptr) {
+    if (raw_pcap == nullptr) {
         std::cerr << "Warning: Could not open device " << interface_name_ << " for live capture: " << errbuf << std::endl;
         std::cerr << "Running in mock/silent mode." << std::endl;
     } else {
+        pcap_handle_.reset(raw_pcap);
         // Set non-blocking mode if desired, but here we run in a dedicated thread
         // using pcap_loop or pcap_dispatch
     }
 
     running_ = true;
-    listener_thread_ = std::thread(&PhyListener::listener_loop, this);
-    injector_thread_ = std::thread(&PhyListener::injector_loop, this);
+    listener_thread_ = std::jthread([this](std::stop_token st) { listener_loop(st); });
+    injector_thread_ = std::jthread([this](std::stop_token st) { injector_loop(st); });
 }
 
 void PhyListener::stop() {
     running_ = false;
     if (pcap_handle_) {
-        pcap_breakloop(pcap_handle_);
+        pcap_breakloop(pcap_handle_.get());
     }
 
     injector_cv_.notify_all();
 
-    if (listener_thread_.joinable()) {
-        listener_thread_.join();
-    }
-    if (injector_thread_.joinable()) {
-        injector_thread_.join();
-    }
+
+
     if (pcap_handle_) {
-        pcap_close(pcap_handle_);
-        pcap_handle_ = nullptr;
+
+
     }
 }
 
-void PhyListener::listener_loop() {
+void PhyListener::listener_loop(std::stop_token stoken) {
     if (pcap_handle_) {
-        while (running_) {
+        while (running_ && !stoken.stop_requested()) {
             // Process whatever is available, blocks until timeout
-            pcap_dispatch(pcap_handle_, -1, packet_handler, reinterpret_cast<u_char*>(this));
+            pcap_dispatch(pcap_handle_.get(), -1, packet_handler, reinterpret_cast<u_char*>(this));
         }
     } else {
         // Mock mode if no interface
-        while (running_) {
+        while (running_ && !stoken.stop_requested()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             std::lock_guard<std::mutex> lock(stream_mutex_);
             // Generate some fake "noise" amplitude
@@ -142,7 +139,7 @@ void PhyListener::inject_modulated_packet(double delay_ns) {
     injector_cv_.notify_one();
 }
 
-void PhyListener::injector_loop() {
+void PhyListener::injector_loop(std::stop_token stoken) {
     // Minimal raw ethernet packet (broadcast MAC, simple ethertype)
     uint8_t dummy_packet[64];
     std::memset(dummy_packet, 0, sizeof(dummy_packet));
@@ -155,13 +152,13 @@ void PhyListener::injector_loop() {
     dummy_packet[12] = 0x08;
     dummy_packet[13] = 0x00;
 
-    while (running_) {
+    while (running_ && !stoken.stop_requested()) {
         double delay_ns = 0.0;
         {
             std::unique_lock<std::mutex> lock(injector_mutex_);
-            injector_cv_.wait(lock, [this]() { return !delay_queue_.empty() || !running_; });
+            injector_cv_.wait(lock, [this, &stoken]() { return !delay_queue_.empty() || !running_ || stoken.stop_requested(); });
 
-            if (!running_) break;
+            if (!running_ || stoken.stop_requested()) break;
 
             delay_ns = delay_queue_.front();
             delay_queue_.erase(delay_queue_.begin());
@@ -181,12 +178,23 @@ void PhyListener::injector_loop() {
 
         // Inject into libpcap to actually modulate the network jitter
         if (pcap_handle_) {
-            if (pcap_inject(pcap_handle_, dummy_packet, sizeof(dummy_packet)) == -1) {
+            if (pcap_inject(pcap_handle_.get(), dummy_packet, sizeof(dummy_packet)) == -1) {
                 // Silently drop if we don't have permissions or interface is down,
                 // but in a real system we'd log: pcap_geterr(pcap_handle_)
             }
         }
     }
+}
+
+} // namespace interceptor
+} // namespace wave_native
+
+namespace wave_native {
+namespace interceptor {
+
+void PhyListener::flush_delay_queue() {
+    std::lock_guard<std::mutex> lock(injector_mutex_);
+    delay_queue_.clear();
 }
 
 } // namespace interceptor

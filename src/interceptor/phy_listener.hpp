@@ -14,6 +14,7 @@ namespace interceptor {
 class PhyListener {
 public:
     PhyListener(const std::string& interface_name);
+    void flush_delay_queue();
     ~PhyListener();
 
     void start();
@@ -29,14 +30,14 @@ public:
     void inject_modulated_packet(double delay_ns);
 
 private:
-    void listener_loop();
-    void injector_loop();
+    void listener_loop(std::stop_token stoken);
+    void injector_loop(std::stop_token stoken);
     static void packet_handler(u_char* user, const struct pcap_pkthdr* pkthdr, const u_char* packet);
 
     std::string interface_name_;
-    pcap_t* pcap_handle_;
+    std::unique_ptr<pcap_t, void(*)(pcap_t*)> pcap_handle_;
 
-    std::thread listener_thread_;
+    std::jthread listener_thread_;
     std::atomic<bool> running_;
 
     std::mutex stream_mutex_;
@@ -47,7 +48,7 @@ private:
     struct timeval last_packet_time_ = {0, 0};
 
     // Asynchronous injection queue
-    std::thread injector_thread_;
+    std::jthread injector_thread_;
     std::mutex injector_mutex_;
     std::condition_variable injector_cv_;
     std::vector<double> delay_queue_;

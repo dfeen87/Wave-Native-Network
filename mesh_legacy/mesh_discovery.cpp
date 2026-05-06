@@ -144,26 +144,34 @@ namespace mesh_legacy {
             return;
         }
 
-        // Calculate Signal Power (Variance) and Mean
+        // Apply Hann Window to reduce sidelobe spectral leakage
+        std::vector<double> windowed_stream(stream.size());
+        size_t N = stream.size();
+        for (size_t i = 0; i < N; ++i) {
+            double hann_multiplier = 0.5 * (1.0 - std::cos(2.0 * M_PI * i / (N - 1)));
+            windowed_stream[i] = stream[i] * hann_multiplier;
+        }
+
+        // Calculate Signal Power (Variance) and Mean from windowed stream
         double mean = 0.0;
-        for (double val : stream) {
+        for (double val : windowed_stream) {
             mean += val;
         }
-        mean /= stream.size();
+        mean /= windowed_stream.size();
 
         double variance = 0.0;
-        for (double val : stream) {
+        for (double val : windowed_stream) {
             variance += (val - mean) * (val - mean);
         }
-        variance /= stream.size();
+        variance /= windowed_stream.size();
 
         // Estimate noise via local differences (high-frequency components)
         double noise_variance = 0.0;
-        for (size_t i = 1; i < stream.size(); ++i) {
-            double diff = stream[i] - stream[i - 1];
+        for (size_t i = 1; i < windowed_stream.size(); ++i) {
+            double diff = windowed_stream[i] - windowed_stream[i - 1];
             noise_variance += diff * diff;
         }
-        noise_variance /= (2.0 * (stream.size() - 1));
+        noise_variance /= (2.0 * (windowed_stream.size() - 1));
 
         // Prevent division by zero
         if (noise_variance < 1e-9) {
@@ -189,10 +197,10 @@ namespace mesh_legacy {
         double error_sum = 0.0;
         int valid_points = 0;
 
-        for (size_t i = 1; i < stream.size() - 1; ++i) {
-            double x = stream[i];
-            double v = (stream[i + 1] - stream[i - 1]) / (2.0 * dt);
-            double a = (stream[i + 1] - 2.0 * stream[i] + stream[i - 1]) / (dt * dt);
+        for (size_t i = 1; i < windowed_stream.size() - 1; ++i) {
+            double x = windowed_stream[i];
+            double v = (windowed_stream[i + 1] - windowed_stream[i - 1]) / (2.0 * dt);
+            double a = (windowed_stream[i + 1] - 2.0 * windowed_stream[i] + windowed_stream[i - 1]) / (dt * dt);
 
             // Left side of equation: ẍ + 0.3ẋ - 1.0x + 1.0x³
             double lhs = a + 0.3 * v - 1.0 * x + 1.0 * x * x * x;
@@ -206,17 +214,17 @@ namespace mesh_legacy {
             }
         }
 
-        if (valid_points > stream.size() / 2) {
+        if (valid_points > windowed_stream.size() / 2) {
             // Found non-linear fold signature. Estimate ω.
             // Simplified estimation: track zero crossings for frequency.
             int crossings = 0;
-            for (size_t i = 1; i < stream.size(); ++i) {
-                if ((stream[i-1] < mean && stream[i] >= mean) ||
-                    (stream[i-1] > mean && stream[i] <= mean)) {
+            for (size_t i = 1; i < windowed_stream.size(); ++i) {
+                if ((windowed_stream[i-1] < mean && windowed_stream[i] >= mean) ||
+                    (windowed_stream[i-1] > mean && windowed_stream[i] <= mean)) {
                     crossings++;
                 }
             }
-            double estimated_omega = (crossings * M_PI) / (stream.size() * dt);
+            double estimated_omega = (crossings * M_PI) / (windowed_stream.size() * dt);
             std::lock_guard<std::mutex> lock(cand_mutex_);
             candidate_frequency_ = estimated_omega;
         } else {
@@ -272,7 +280,15 @@ namespace mesh_legacy {
             variance /= (history.size() - 1);
 
             double stddev = std::sqrt(variance);
-            score.consistency_score = std::max(0.0, 1.0 - stddev);
+            double raw_consistency = std::max(0.0, 1.0 - stddev);
+
+            // EMA for consistency smoothing
+            if (ema_consistency_.find(phase_signature) == ema_consistency_.end()) {
+                ema_consistency_[phase_signature] = raw_consistency;
+            } else {
+                ema_consistency_[phase_signature] = 0.2 * raw_consistency + 0.8 * ema_consistency_[phase_signature];
+            }
+            score.consistency_score = ema_consistency_[phase_signature];
         } else {
             score.consistency_score = 1.0;
         }
@@ -290,9 +306,22 @@ namespace mesh_legacy {
             return false; // Still in trial
         }
 
-        if (score.aggregate_score() < 0.70) {
-            drift_history_.erase(phase_signature);
-            return false; // Phase Decoloration
+        double agg_score = score.aggregate_score();
+        bool is_trusted = trust_state_[phase_signature];
+
+        // Schmitt Trigger Logic for hysteresis
+        if (is_trusted) {
+            if (agg_score < 0.65) {
+                drift_history_.erase(phase_signature);
+                trust_state_[phase_signature] = false;
+                return false; // Drop-out
+            }
+        } else {
+            if (agg_score >= 0.75) {
+                trust_state_[phase_signature] = true;
+            } else {
+                return false; // Not locked in yet
+            }
         }
 
         return true;

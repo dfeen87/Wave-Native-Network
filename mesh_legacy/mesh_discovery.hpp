@@ -54,10 +54,10 @@ namespace mesh_legacy {
 
     struct ResonantPeer {
         std::vector<uint8_t> signature;
-        double omega;
+        long double omega;
         double psi_snr;
         AileeTrustScore ailee_score;
-        double t_s;
+        long double t_s;
     };
 
     class ResonantPeerTable {
@@ -102,6 +102,8 @@ namespace mesh_legacy {
     private:
         std::shared_ptr<class ZKVerifier> verifier_;
         std::map<std::vector<uint8_t>, std::vector<double>> drift_history_;
+        std::map<std::vector<uint8_t>, bool> trust_state_;
+        std::map<std::vector<uint8_t>, double> ema_consistency_;
     };
 
     class InterfaceDiscovery {
