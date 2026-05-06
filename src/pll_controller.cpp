@@ -1,6 +1,8 @@
 #include "pll_controller.hpp"
+#include "wave_state.hpp"
 #include <cmath>
 #include <algorithm>
+#include <iostream>
 
 namespace wave_native {
 namespace core {
@@ -17,7 +19,10 @@ PllController::PllController(double omega_base)
       was_increasing_(true) {
 }
 
-double PllController::step(const std::vector<double>& stream, double theta_local, double dt) {
+double PllController::step(const std::vector<double>& stream, double theta_local, double dt, double ts) {
+    double expected_salt = wave_native::core::generate_phase_salt(ts, omega_base_);
+    double omega_active = omega_base_ + expected_salt;
+
     // Process stream to find the latest peak to estimate incoming phase
     if (stream.empty()) {
         current_time_ += dt;
@@ -30,6 +35,17 @@ double PllController::step(const std::vector<double>& stream, double theta_local
 
             // Simple peak detection: was increasing, now decreasing
             if (was_increasing_ && !is_increasing) {
+                if (is_locked_ && last_peak_time_ > 0.0) {
+                    double time_diff = current_time_ - last_peak_time_;
+                    if (time_diff > 0.0) {
+                        double incoming_omega = (2.0 * M_PI) / time_diff;
+                        if (std::abs(incoming_omega - omega_active) > 0.0001) {
+                            std::cout << "[SECURITY] Perfect resonance detected, but Phase-Salt invalid. Dropping Ghost Lock.\n";
+                            is_replay_detected_ = true;
+                            break;
+                        }
+                    }
+                }
                 last_peak_time_ = current_time_;
             }
 
@@ -43,7 +59,7 @@ double PllController::step(const std::vector<double>& stream, double theta_local
     if (last_peak_time_ > 0.0) {
         // Estimate phase based on time elapsed since the last peak
         double time_since_peak = current_time_ - last_peak_time_;
-        theta_incoming = std::fmod(omega_base_ * time_since_peak, 2.0 * M_PI);
+        theta_incoming = std::fmod(omega_active * time_since_peak, 2.0 * M_PI);
     }
 
     // Calculate phase difference
@@ -76,7 +92,7 @@ double PllController::step(const std::vector<double>& stream, double theta_local
     }
 
     // PI control output
-    double omega_corrected = omega_base_ + (K_p_ * delta_theta_) + (K_i_ * integral_accumulator_);
+    double omega_corrected = omega_active + (K_p_ * delta_theta_) + (K_i_ * integral_accumulator_);
 
     return omega_corrected;
 }

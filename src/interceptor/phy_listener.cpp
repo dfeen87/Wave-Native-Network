@@ -169,7 +169,14 @@ void PhyListener::injector_loop() {
 
         // Execute the transduction delay (Nudge)
         if (delay_ns > 0.0) {
-            std::this_thread::sleep_for(std::chrono::nanoseconds(static_cast<long long>(delay_ns)));
+            if (delay_ns < 50000.0) {
+                auto start = std::chrono::high_resolution_clock::now();
+                while (std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - start).count() < delay_ns) {
+                    // spin
+                }
+            } else {
+                std::this_thread::sleep_for(std::chrono::nanoseconds(static_cast<long long>(delay_ns)));
+            }
         }
 
         // Inject into libpcap to actually modulate the network jitter
