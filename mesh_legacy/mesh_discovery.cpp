@@ -85,7 +85,7 @@ namespace mesh_legacy {
         ZKProof mock_proof(x, 0.0, 1.0, v);
         AileeTrustScore good_score = {0.8, 0.9, 0.8, 0.9};
 
-        if (gatekeeper_->process_incoming_peer(mock_phase_signature, mock_proof, good_score)) {
+        if (gatekeeper_->process_incoming_peer(mock_phase_signature, mock_proof, good_score, 10.0)) {
             InterfaceInfo eth0;
             eth0.name = "eth0";
             eth0.iface_type = InterfaceType::Ethernet;
@@ -98,7 +98,7 @@ namespace mesh_legacy {
         // Bad proof that fails threshold
         ZKProof bad_proof(100.0, 0.0, 1.0, 100.0);
         AileeTrustScore bad_score = {0.2, 0.1, 0.3, 0.2};
-        if (gatekeeper_->process_incoming_peer(mock_phase_signature, bad_proof, bad_score)) {
+        if (gatekeeper_->process_incoming_peer(mock_phase_signature, bad_proof, bad_score, 0.5)) {
             InterfaceInfo wlan0;
             wlan0.name = "wlan0";
             wlan0.iface_type = InterfaceType::WiFi;
@@ -111,12 +111,127 @@ namespace mesh_legacy {
         return true;
     }
 
+    void ResonantPeerTable::insert_or_update(const ResonantPeer& peer) {
+        std::unique_lock<std::shared_mutex> lock(mutex_);
+        peers_[peer.signature] = peer;
+    }
+
+    std::optional<ResonantPeer> ResonantPeerTable::get_peer(const std::vector<uint8_t>& signature) const {
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        auto it = peers_.find(signature);
+        if (it != peers_.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+    void ResonantPeerTable::prune_decayed_peers(double current_time) {
+        std::unique_lock<std::shared_mutex> lock(mutex_);
+        for (auto it = peers_.begin(); it != peers_.end(); ) {
+            if (it->second.psi_snr < 0.1 || (current_time - it->second.t_s) > 5.0) {
+                it = peers_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    void AdaptiveSpectralMonitor::analyze_stream(const std::vector<double>& stream) {
+        if (stream.size() < 3) {
+            latest_snr_.store(0.0);
+            std::lock_guard<std::mutex> lock(cand_mutex_);
+            candidate_frequency_ = std::nullopt;
+            return;
+        }
+
+        // Calculate Signal Power (Variance) and Mean
+        double mean = 0.0;
+        for (double val : stream) {
+            mean += val;
+        }
+        mean /= stream.size();
+
+        double variance = 0.0;
+        for (double val : stream) {
+            variance += (val - mean) * (val - mean);
+        }
+        variance /= stream.size();
+
+        // Estimate noise via local differences (high-frequency components)
+        double noise_variance = 0.0;
+        for (size_t i = 1; i < stream.size(); ++i) {
+            double diff = stream[i] - stream[i - 1];
+            noise_variance += diff * diff;
+        }
+        noise_variance /= (2.0 * (stream.size() - 1));
+
+        // Prevent division by zero
+        if (noise_variance < 1e-9) {
+            noise_variance = 1e-9;
+        }
+
+        latest_snr_.store(variance / noise_variance);
+
+        // Discard stochastic Gaussian noise or rigid framing
+        // If variance is extremely low, it's flatline.
+        // If SNR is ~1.0, it's purely stochastic.
+        if (latest_snr_.load() < 2.0 || variance < 1e-4) {
+            std::lock_guard<std::mutex> lock(cand_mutex_);
+            candidate_frequency_ = std::nullopt;
+            return;
+        }
+
+        // Resonance Filtering: ẍ + 0.3ẋ - 1.0x + 1.0x³ = 0.5 cos(ωt)
+        // We'll estimate x, v (ẋ), a (ẍ) using finite differences.
+        // Assuming unit time step dt for the sampled sequence, though in reality dt is given by PHY rate.
+        // For detection, we just check the structural error against the nonlinear constraint.
+        double dt = 0.01;
+        double error_sum = 0.0;
+        int valid_points = 0;
+
+        for (size_t i = 1; i < stream.size() - 1; ++i) {
+            double x = stream[i];
+            double v = (stream[i + 1] - stream[i - 1]) / (2.0 * dt);
+            double a = (stream[i + 1] - 2.0 * stream[i] + stream[i - 1]) / (dt * dt);
+
+            // Left side of equation: ẍ + 0.3ẋ - 1.0x + 1.0x³
+            double lhs = a + 0.3 * v - 1.0 * x + 1.0 * x * x * x;
+
+            // We expect lhs to match 0.5 cos(ωt).
+            // Thus lhs must be bounded approximately within [-0.5, 0.5].
+            if (std::abs(lhs) <= 0.6) {
+                // Heuristic for periodicity / driving match
+                error_sum += std::abs(lhs);
+                valid_points++;
+            }
+        }
+
+        if (valid_points > stream.size() / 2) {
+            // Found non-linear fold signature. Estimate ω.
+            // Simplified estimation: track zero crossings for frequency.
+            int crossings = 0;
+            for (size_t i = 1; i < stream.size(); ++i) {
+                if ((stream[i-1] < mean && stream[i] >= mean) ||
+                    (stream[i-1] > mean && stream[i] <= mean)) {
+                    crossings++;
+                }
+            }
+            double estimated_omega = (crossings * M_PI) / (stream.size() * dt);
+            std::lock_guard<std::mutex> lock(cand_mutex_);
+            candidate_frequency_ = estimated_omega;
+        } else {
+            std::lock_guard<std::mutex> lock(cand_mutex_);
+            candidate_frequency_ = std::nullopt;
+        }
+    }
+
     PeerGatekeeper::PeerGatekeeper(std::shared_ptr<ZKVerifier> verifier)
         : verifier_(std::move(verifier)) {}
 
     bool PeerGatekeeper::process_incoming_peer(const std::vector<uint8_t>& phase_signature,
                                                const ZKProof& proof,
-                                               AileeTrustScore& score) {
+                                               AileeTrustScore& score,
+                                               double psi_snr) {
         if (phase_signature.empty()) {
             return false;
         }
@@ -128,13 +243,22 @@ namespace mesh_legacy {
 
         double epsilon = verifier_->get_epsilon();
 
+        if (drift > epsilon) {
+            drift_history_.erase(phase_signature);
+            return false;
+        }
+
         // Determinism
         score.determinism_score = 1.0 - (drift / epsilon);
+
+        // Dynamic Trial Validation Window based on SNR
+        double w_val = std::clamp(5000.0 * (1.0 / std::max(psi_snr, 0.001)), 1000.0, 20000.0);
+        size_t required_history_points = std::max(3.0, w_val / 1000.0);
 
         // Consistency
         auto& history = drift_history_[phase_signature];
         history.push_back(drift);
-        if (history.size() > 3) {
+        while (history.size() > required_history_points) {
             history.erase(history.begin());
         }
 
@@ -161,7 +285,13 @@ namespace mesh_legacy {
             score.confidence_score = 0.0;
         }
 
+        // Return false until observation duration is met
+        if (history.size() < required_history_points) {
+            return false; // Still in trial
+        }
+
         if (score.aggregate_score() < 0.70) {
+            drift_history_.erase(phase_signature);
             return false; // Phase Decoloration
         }
 

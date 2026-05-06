@@ -40,7 +40,8 @@ double AmbientVerifier::get_physical_integrity_score() const {
 
 bool AmbientVerifier::verify_peer(const std::vector<uint8_t>& phase_signature,
                                    const mesh_legacy::ZKProof& proof,
-                                   mesh_legacy::AileeTrustScore& score) {
+                                   mesh_legacy::AileeTrustScore& score,
+                                   double psi_snr) {
 
     // Instantly reject if system is in quarantine state
     if (current_integrity_score_ == 0.0) {
@@ -58,7 +59,7 @@ bool AmbientVerifier::verify_peer(const std::vector<uint8_t>& phase_signature,
     score.determinism_score *= current_integrity_score_;
 
     // Let the gatekeeper do the hard auth
-    return gatekeeper_->process_incoming_peer(phase_signature, proof, score);
+    return gatekeeper_->process_incoming_peer(phase_signature, proof, score, psi_snr);
 }
 
 void AmbientVerifier::set_pll_locked(bool locked) {

@@ -12,6 +12,7 @@
 #include "calibration.hpp"
 #include "pll_controller.hpp"
 #include <string.h>
+#include <condition_variable>
 
 using namespace wave_native;
 
@@ -72,10 +73,46 @@ int main(int argc, char** argv) {
     // Initialize PLL Controller
     core::PllController pll(omega);
 
+    // Initialize Resonant Peer Table and Spectral Monitor
+    mesh_legacy::ResonantPeerTable peer_table;
+    mesh_legacy::AdaptiveSpectralMonitor spectral_monitor;
+
+    std::mutex stream_mutex;
+    std::condition_variable stream_cv;
+    std::vector<double> shared_stream;
+    bool new_stream_ready = false;
+
     const double dt = 0.01; // Time step for RK4
 
     auto last_tick = std::chrono::steady_clock::now();
     uint64_t tick_count = 0;
+
+    std::atomic<double> shared_ts{0.0};
+
+    // Pruning Background Thread
+    std::thread pruning_thread([&peer_table, &shared_ts]() {
+        while (global_running) {
+            peer_table.prune_decayed_peers(shared_ts.load());
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+    });
+
+    // Spectral Scan Background Thread
+    std::thread spectral_thread([&]() {
+        while (global_running) {
+            std::vector<double> local_stream;
+            {
+                std::unique_lock<std::mutex> lock(stream_mutex);
+                stream_cv.wait_for(lock, std::chrono::milliseconds(100), [&]{ return new_stream_ready || !global_running; });
+                if (!global_running) break;
+                if (!new_stream_ready) continue;
+                local_stream = shared_stream;
+                new_stream_ready = false;
+            }
+            // Execute in background
+            spectral_monitor.analyze_stream(local_stream);
+        }
+    });
 
     // run_physics_engine loop
     while (global_running) {
@@ -92,6 +129,21 @@ int main(int argc, char** argv) {
             // 2. Trust Validation - analyze signal entropy
             verifier.analyze_signal_entropy(stream);
 
+            // 2.5 Spectral Analysis & Dynamic Lock (Asynchronous)
+            {
+                std::lock_guard<std::mutex> lock(stream_mutex);
+                shared_stream = stream;
+                new_stream_ready = true;
+            }
+            stream_cv.notify_one();
+
+            double psi_snr = spectral_monitor.get_latest_snr();
+            if (auto cand_omega = spectral_monitor.get_candidate_frequency()) {
+                // We have a fold signature candidate! Let the PLL try to lock it.
+                // In a true implementation, we might nudge the pll base omega.
+                // For now, we rely on the normal step but log it.
+            }
+
             // PLL Update step
             double omega_corrected = pll.step(stream, state.theta, dt);
 
@@ -100,6 +152,16 @@ int main(int argc, char** argv) {
                 verifier.trigger_quarantine();
             } else if (pll.is_locked()) {
                 verifier.set_pll_locked(true);
+
+                // Mock Trial Handshake
+                std::vector<uint8_t> mock_sig = {0xAA, 0xBB, 0xCC};
+                mesh_legacy::ZKProof mock_proof(state.A, state.theta, state.omega, state.x_dot);
+                mesh_legacy::AileeTrustScore mock_score = {0.8, 0.8, 0.8, 0.8};
+
+                if (verifier.verify_peer(mock_sig, mock_proof, mock_score, psi_snr)) {
+                    mesh_legacy::ResonantPeer new_peer{mock_sig, state.omega, psi_snr, mock_score, state.ts};
+                    peer_table.insert_or_update(new_peer);
+                }
             }
 
             double trust_score = verifier.get_physical_integrity_score();
@@ -125,6 +187,8 @@ int main(int argc, char** argv) {
             // Step the Duffing oscillator
             duffing.step(state, dt);
 
+            shared_ts.store(state.ts);
+
             // Print status every ~1 second (100 ticks at 0.01s dt)
             if (tick_count % 100 == 0) {
                 std::cout << std::fixed << std::setprecision(4)
@@ -146,6 +210,15 @@ int main(int argc, char** argv) {
 
     std::cout << "Stopping PHY listener...\n";
     phy.stop();
+
+    if (pruning_thread.joinable()) {
+        pruning_thread.join();
+    }
+
+    if (spectral_thread.joinable()) {
+        spectral_thread.join();
+    }
+
     std::cout << "Wavefront Daemon shutdown complete.\n";
 
     return 0;
