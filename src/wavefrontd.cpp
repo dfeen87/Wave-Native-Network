@@ -169,11 +169,11 @@ int main(int argc, char** argv) {
                 mesh_legacy::AileeTrustScore mock_score = {0.8, 0.8, 0.8, 0.8};
 
                 if (verifier.verify_peer(mock_sig, mock_proof, mock_score, psi_snr)) {
-                    mesh_legacy::ResonantPeer new_peer{mock_sig, state.omega, psi_snr, mock_score, state.ts};
+                    mesh_legacy::ResonantPeer new_peer{mock_sig, state.omega, psi_snr, mock_score, state.ts, state.theta};
                     peer_table.insert_or_update(new_peer);
 
                     // Add to routing engine
-                    router.add_or_update_peer(mock_sig, state.omega, mock_score);
+                    router.add_or_update_peer(mock_sig, state.omega, mock_score, state.theta, iat_stream);
                 }
             }
 
