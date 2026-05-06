@@ -17,6 +17,7 @@ add_executable(wavefrontd
     src/ambient_verifier.cpp
     src/calibration.cpp
     src/pll_controller.cpp
+    src/routing_engine.cpp
     mesh_legacy/mesh_discovery.cpp
     mesh_legacy/peer_routing.cpp
     mesh_legacy/zk_verifier.cpp

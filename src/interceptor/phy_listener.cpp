@@ -37,6 +37,7 @@ void PhyListener::start() {
 
     running_ = true;
     listener_thread_ = std::thread(&PhyListener::listener_loop, this);
+    injector_thread_ = std::thread(&PhyListener::injector_loop, this);
 }
 
 void PhyListener::stop() {
@@ -44,8 +45,14 @@ void PhyListener::stop() {
     if (pcap_handle_) {
         pcap_breakloop(pcap_handle_);
     }
+
+    injector_cv_.notify_all();
+
     if (listener_thread_.joinable()) {
         listener_thread_.join();
+    }
+    if (injector_thread_.joinable()) {
+        injector_thread_.join();
     }
     if (pcap_handle_) {
         pcap_close(pcap_handle_);
@@ -100,6 +107,54 @@ std::vector<double> PhyListener::consume_stream() {
     std::vector<double> stream = std::move(amplitude_stream_);
     amplitude_stream_.clear();
     return stream;
+}
+
+void PhyListener::inject_modulated_packet(double delay_ns) {
+    {
+        std::lock_guard<std::mutex> lock(injector_mutex_);
+        delay_queue_.push_back(delay_ns);
+    }
+    injector_cv_.notify_one();
+}
+
+void PhyListener::injector_loop() {
+    // Minimal raw ethernet packet (broadcast MAC, simple ethertype)
+    uint8_t dummy_packet[64];
+    std::memset(dummy_packet, 0, sizeof(dummy_packet));
+
+    // Set destination MAC to broadcast
+    for (int i = 0; i < 6; ++i) dummy_packet[i] = 0xFF;
+    // Set source MAC to some dummy
+    for (int i = 6; i < 12; ++i) dummy_packet[i] = 0xAA;
+    // Set EtherType (0x0800 for IP, or custom)
+    dummy_packet[12] = 0x08;
+    dummy_packet[13] = 0x00;
+
+    while (running_) {
+        double delay_ns = 0.0;
+        {
+            std::unique_lock<std::mutex> lock(injector_mutex_);
+            injector_cv_.wait(lock, [this]() { return !delay_queue_.empty() || !running_; });
+
+            if (!running_) break;
+
+            delay_ns = delay_queue_.front();
+            delay_queue_.erase(delay_queue_.begin());
+        }
+
+        // Execute the transduction delay (Nudge)
+        if (delay_ns > 0.0) {
+            std::this_thread::sleep_for(std::chrono::nanoseconds(static_cast<long long>(delay_ns)));
+        }
+
+        // Inject into libpcap to actually modulate the network jitter
+        if (pcap_handle_) {
+            if (pcap_inject(pcap_handle_, dummy_packet, sizeof(dummy_packet)) == -1) {
+                // Silently drop if we don't have permissions or interface is down,
+                // but in a real system we'd log: pcap_geterr(pcap_handle_)
+            }
+        }
+    }
 }
 
 } // namespace interceptor
