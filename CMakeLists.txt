@@ -24,5 +24,6 @@ add_executable(wavefrontd
 
 target_link_libraries(wavefrontd
     pcap
+    m
     Threads::Threads
 )

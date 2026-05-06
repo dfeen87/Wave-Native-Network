@@ -21,7 +21,8 @@ public:
     // Use the underlying PeerGatekeeper to process a peer, injecting our physical score
     bool verify_peer(const std::vector<uint8_t>& phase_signature,
                      const mesh_legacy::ZKProof& proof,
-                     mesh_legacy::AileeTrustScore& score);
+                     mesh_legacy::AileeTrustScore& score,
+                     double psi_snr);
 
     void set_pll_locked(bool locked);
     void trigger_quarantine();

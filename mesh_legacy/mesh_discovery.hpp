@@ -6,6 +6,10 @@
 #include <memory>
 #include <shared_mutex>
 #include <optional>
+#include <atomic>
+#include <algorithm>
+#include <cmath>
+#include <mutex>
 
 #include "zk_verifier.hpp"
 
@@ -48,6 +52,42 @@ namespace mesh_legacy {
         std::map<std::string, InterfaceInfo> interfaces_;
     };
 
+    struct ResonantPeer {
+        std::vector<uint8_t> signature;
+        double omega;
+        double psi_snr;
+        AileeTrustScore ailee_score;
+        double t_s;
+    };
+
+    class ResonantPeerTable {
+    public:
+        void insert_or_update(const ResonantPeer& peer);
+        std::optional<ResonantPeer> get_peer(const std::vector<uint8_t>& signature) const;
+        void prune_decayed_peers(double current_time);
+
+    private:
+        mutable std::shared_mutex mutex_;
+        std::map<std::vector<uint8_t>, ResonantPeer> peers_;
+    };
+
+    class AdaptiveSpectralMonitor {
+    public:
+        AdaptiveSpectralMonitor() : latest_snr_(0.0) {}
+
+        void analyze_stream(const std::vector<double>& stream);
+        double get_latest_snr() const { return latest_snr_.load(); }
+        std::optional<double> get_candidate_frequency() const {
+            std::lock_guard<std::mutex> lock(cand_mutex_);
+            return candidate_frequency_;
+        }
+
+    private:
+        std::atomic<double> latest_snr_;
+        mutable std::mutex cand_mutex_;
+        std::optional<double> candidate_frequency_;
+    };
+
     class PeerGatekeeper {
     public:
         explicit PeerGatekeeper(std::shared_ptr<class ZKVerifier> verifier);
@@ -56,7 +96,8 @@ namespace mesh_legacy {
         // Drops connection ruthlessly if verification fails. Returns true only on full success.
         bool process_incoming_peer(const std::vector<uint8_t>& phase_signature,
                                    const struct ZKProof& proof,
-                                   struct AileeTrustScore& score);
+                                   struct AileeTrustScore& score,
+                                   double psi_snr);
 
     private:
         std::shared_ptr<class ZKVerifier> verifier_;
