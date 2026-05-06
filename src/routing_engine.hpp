@@ -8,6 +8,7 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#include <atomic>
 
 #include "../mesh_legacy/zk_verifier.hpp"
 #include "wave_state.hpp"
@@ -21,11 +22,43 @@ enum class TransportVector {
     VectorB_Transduction
 };
 
+struct HybridWeights {
+    double w_L = 0.15;
+    double w_J = 0.15;
+    double w_phi = 0.30;
+    double w_omega = 0.20;
+    double w_DPhi = 0.20;
+};
+
 struct KnownPeer {
     std::vector<uint8_t> signature;
     double spectral_frequency;
     mesh_legacy::AileeTrustScore trust_score;
-    double path_fitness;
+    std::atomic<double> latency_ema{0.0};
+    std::atomic<double> jitter_ema{0.0};
+    long double phase_theta = 0.0L;
+
+    KnownPeer() = default;
+
+    KnownPeer(const KnownPeer& other)
+        : signature(other.signature),
+          spectral_frequency(other.spectral_frequency),
+          trust_score(other.trust_score),
+          latency_ema(other.latency_ema.load()),
+          jitter_ema(other.jitter_ema.load()),
+          phase_theta(other.phase_theta) {}
+
+    KnownPeer& operator=(const KnownPeer& other) {
+        if (this != &other) {
+            signature = other.signature;
+            spectral_frequency = other.spectral_frequency;
+            trust_score = other.trust_score;
+            latency_ema.store(other.latency_ema.load());
+            jitter_ema.store(other.jitter_ema.load());
+            phase_theta = other.phase_theta;
+        }
+        return *this;
+    }
 };
 
 class RoutingEngine {
@@ -36,7 +69,9 @@ public:
     // Add or update a peer in the routing table
     void add_or_update_peer(const std::vector<uint8_t>& signature,
                             double spectral_frequency,
-                            const mesh_legacy::AileeTrustScore& score);
+                            const mesh_legacy::AileeTrustScore& score,
+                            long double phase_theta,
+                            const std::vector<double>& iat_stream);
 
     // Main entry point for propagating the state to all known peers
     void propagate_state(const wave_native::core::WaveState& local_state, const std::vector<double>& current_stream);
@@ -54,6 +89,8 @@ public:
     bool is_vector_a_viable() const;
 
 private:
+    double calculate_hybrid_distance(const KnownPeer& peer, const wave_native::core::WaveState& local_state) const;
+
     // Decide between Vector A and Vector B
     TransportVector select_vector(double local_omega, const KnownPeer& peer) const;
 
@@ -64,6 +101,9 @@ private:
     // Adaptive Mesh Map
     std::map<std::vector<uint8_t>, KnownPeer> mesh_map_;
     mutable std::mutex map_mutex_;
+
+    HybridWeights hybrid_weights_;
+    wave_native::core::WaveState last_state_;
 
     wave_native::interceptor::PhyListener* phy_listener_;
 

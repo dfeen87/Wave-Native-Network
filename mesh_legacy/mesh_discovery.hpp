@@ -58,6 +58,38 @@ namespace mesh_legacy {
         double psi_snr;
         AileeTrustScore ailee_score;
         long double t_s;
+        std::atomic<double> latency_ema{0.0};
+        std::atomic<double> jitter_ema{0.0};
+        long double phase_theta = 0.0L;
+
+        ResonantPeer() = default;
+
+        ResonantPeer(const std::vector<uint8_t>& sig, long double w, double snr, AileeTrustScore score, long double ts, long double theta)
+            : signature(sig), omega(w), psi_snr(snr), ailee_score(score), t_s(ts), phase_theta(theta) {}
+
+        ResonantPeer(const ResonantPeer& other)
+            : signature(other.signature),
+              omega(other.omega),
+              psi_snr(other.psi_snr),
+              ailee_score(other.ailee_score),
+              t_s(other.t_s),
+              latency_ema(other.latency_ema.load()),
+              jitter_ema(other.jitter_ema.load()),
+              phase_theta(other.phase_theta) {}
+
+        ResonantPeer& operator=(const ResonantPeer& other) {
+            if (this != &other) {
+                signature = other.signature;
+                omega = other.omega;
+                psi_snr = other.psi_snr;
+                ailee_score = other.ailee_score;
+                t_s = other.t_s;
+                latency_ema.store(other.latency_ema.load());
+                jitter_ema.store(other.jitter_ema.load());
+                phase_theta = other.phase_theta;
+            }
+            return *this;
+        }
     };
 
     class ResonantPeerTable {

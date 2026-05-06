@@ -5,10 +5,49 @@ namespace core {
 
 void RoutingEngine::add_or_update_peer(const std::vector<uint8_t>& signature,
                                        double spectral_frequency,
-                                       const mesh_legacy::AileeTrustScore& score) {
+                                       const mesh_legacy::AileeTrustScore& score,
+                                       long double phase_theta,
+                                       const std::vector<double>& iat_stream) {
     std::lock_guard<std::mutex> lock(map_mutex_);
-    double fitness = score.determinism_score + score.safety_score;
-    mesh_map_[signature] = KnownPeer{signature, spectral_frequency, score, fitness};
+
+    double prev_latency_ema = 0.0;
+    double prev_jitter_ema = 0.0;
+
+    auto it = mesh_map_.find(signature);
+    if (it != mesh_map_.end()) {
+        prev_latency_ema = it->second.latency_ema.load();
+        prev_jitter_ema = it->second.jitter_ema.load();
+    }
+
+    double new_latency_ema = prev_latency_ema;
+    double new_jitter_ema = prev_jitter_ema;
+
+    for (double dt : iat_stream) {
+        new_latency_ema = 0.8 * new_latency_ema + 0.2 * dt;
+        new_jitter_ema = 0.8 * new_jitter_ema + 0.2 * std::abs(dt - new_latency_ema);
+    }
+
+    KnownPeer new_peer;
+    new_peer.signature = signature;
+    new_peer.spectral_frequency = spectral_frequency;
+    new_peer.trust_score = score;
+    new_peer.phase_theta = phase_theta;
+    new_peer.latency_ema.store(new_latency_ema);
+    new_peer.jitter_ema.store(new_jitter_ema);
+
+    mesh_map_[signature] = new_peer;
+}
+
+double RoutingEngine::calculate_hybrid_distance(const KnownPeer& peer, const wave_native::core::WaveState& local_state) const {
+    double L_norm = std::clamp(peer.latency_ema.load() / 100000000.0, 0.0, 1.0);
+    double J_norm = std::clamp(peer.jitter_ema.load() / 10000000.0, 0.0, 1.0);
+    long double delta_phi = std::abs(peer.phase_theta - local_state.theta);
+    long double delta_omega = std::abs(peer.spectral_frequency - local_state.omega);
+    double divergence = 1.0 - peer.trust_score.consistency_score;
+    return hybrid_weights_.w_L * L_norm + hybrid_weights_.w_J * J_norm +
+           hybrid_weights_.w_phi * static_cast<double>(delta_phi) +
+           hybrid_weights_.w_omega * static_cast<double>(delta_omega) +
+           hybrid_weights_.w_DPhi * divergence;
 }
 
 TransportVector RoutingEngine::select_vector(double local_omega, const KnownPeer& peer) const {
@@ -26,7 +65,7 @@ TransportVector RoutingEngine::select_vector(double local_omega, const KnownPeer
 bool RoutingEngine::is_vector_a_viable() const {
     std::lock_guard<std::mutex> lock(map_mutex_);
     for (const auto& [signature, peer] : mesh_map_) {
-        if (peer.path_fitness >= 0.2) return true;
+        if (calculate_hybrid_distance(peer, last_state_) < 1.0) return true;
     }
     return false;
 }
@@ -89,12 +128,24 @@ void RoutingEngine::refract_wavefront(const wave_native::core::WaveState& state_
 
 void RoutingEngine::propagate_state(const wave_native::core::WaveState& local_state, const std::vector<double>& current_stream) {
     std::lock_guard<std::mutex> lock(map_mutex_);
+    last_state_ = local_state;
 
+    std::vector<std::pair<double, KnownPeer>> sorted_peers;
     for (const auto& [signature, peer] : mesh_map_) {
-        // Skip poorly performing paths
-        if (peer.path_fitness < 0.2) continue;
+        double d_WNP = calculate_hybrid_distance(peer, local_state);
+        if (d_WNP < 1.0) {
+            sorted_peers.emplace_back(d_WNP, peer);
+        }
+    }
 
-        TransportVector vector = select_vector(local_state.omega, peer);
+    std::sort(sorted_peers.begin(), sorted_peers.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
+
+    // Only propagate to the optimal peer (the one with the lowest d_WNP)
+    if (!sorted_peers.empty()) {
+        const KnownPeer& optimal_peer = sorted_peers.front().second;
+
+        TransportVector vector = select_vector(local_state.omega, optimal_peer);
 
         if (vector == TransportVector::VectorB_Transduction && transduction_allowed_) {
             // Attempt to map continuous wave-state to discrete IAT
