@@ -151,11 +151,15 @@ int main(int argc, char** argv) {
             }
 
             // PLL Update step
-            double omega_corrected = pll.step(stream, state.theta, dt);
+            double omega_corrected = pll.step(stream, state.theta, dt, state.ts);
 
             // Check for break lock and quarantine
             if (std::abs(pll.get_phase_error()) > M_PI / 2.0) {
                 verifier.trigger_quarantine();
+            } else if (pll.is_replay_detected()) {
+                verifier.trigger_quarantine();
+                pll.clear_replay_flag();
+                pll.reset();
             } else if (pll.is_locked()) {
                 verifier.set_pll_locked(true);
 

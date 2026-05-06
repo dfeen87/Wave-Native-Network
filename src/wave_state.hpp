@@ -1,9 +1,20 @@
 #pragma once
 
 #include <cmath>
+#include <cstring>
+#include <functional>
+#include <cstdint>
 
 namespace wave_native {
 namespace core {
+
+inline double generate_phase_salt(double ts, double omega) {
+    uint64_t epoch = static_cast<uint64_t>(std::floor(ts / 2.5));
+    uint64_t w_bits;
+    std::memcpy(&w_bits, &omega, sizeof(omega));
+    uint64_t hash = std::hash<uint64_t>{}(epoch ^ w_bits);
+    return (hash % 1000) * 1e-5;
+}
 
 struct WaveState {
     double A;   // Amplitude (x)
@@ -51,17 +62,19 @@ public:
         double v = state.x_dot;
         double omega = state.omega;
 
+        double omega_active = omega + generate_phase_salt(t, omega);
+
         double k1_x = f1(t, x, v);
-        double k1_v = f2(t, x, v, omega);
+        double k1_v = f2(t, x, v, omega_active);
 
         double k2_x = f1(t + 0.5 * dt, x + 0.5 * dt * k1_x, v + 0.5 * dt * k1_v);
-        double k2_v = f2(t + 0.5 * dt, x + 0.5 * dt * k1_x, v + 0.5 * dt * k1_v, omega);
+        double k2_v = f2(t + 0.5 * dt, x + 0.5 * dt * k1_x, v + 0.5 * dt * k1_v, omega_active);
 
         double k3_x = f1(t + 0.5 * dt, x + 0.5 * dt * k2_x, v + 0.5 * dt * k2_v);
-        double k3_v = f2(t + 0.5 * dt, x + 0.5 * dt * k2_x, v + 0.5 * dt * k2_v, omega);
+        double k3_v = f2(t + 0.5 * dt, x + 0.5 * dt * k2_x, v + 0.5 * dt * k2_v, omega_active);
 
         double k4_x = f1(t + dt, x + dt * k3_x, v + dt * k3_v);
-        double k4_v = f2(t + dt, x + dt * k3_x, v + dt * k3_v, omega);
+        double k4_v = f2(t + dt, x + dt * k3_x, v + dt * k3_v, omega_active);
 
         state.A = x + (dt / 6.0) * (k1_x + 2.0 * k2_x + 2.0 * k3_x + k4_x);
         state.x_dot = v + (dt / 6.0) * (k1_v + 2.0 * k2_v + 2.0 * k3_v + k4_v);
@@ -70,7 +83,7 @@ public:
         // Approximate phase, simplistic update based on angular velocity.
         // In a true system, phase might be extracted via Hilbert transform,
         // but for now we maintain it as a simple accumulator.
-        state.theta = std::fmod(state.theta + omega * dt, 2.0 * M_PI);
+        state.theta = std::fmod(state.theta + omega_active * dt, 2.0 * M_PI);
     }
 
 private:

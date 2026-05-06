@@ -12,10 +12,13 @@ public:
     // Update the PLL loop with a new batch of amplitude samples from the PHY listener
     // and the current local phase (theta_local)
     // Returns the corrected frequency (omega_corrected)
-    double step(const std::vector<double>& stream, double theta_local, double dt);
+    double step(const std::vector<double>& stream, double theta_local, double dt, double ts);
 
     bool is_locked() const;
     double get_phase_error() const;
+
+    bool is_replay_detected() const { return is_replay_detected_; }
+    void clear_replay_flag() { is_replay_detected_ = false; }
 
     // Trigger a manual reset (e.g., quarantine)
     void reset();
@@ -58,6 +61,7 @@ private:
     bool was_increasing_;
 
     bool integral_frozen_ = false;
+    bool is_replay_detected_ = false;
 };
 
 } // namespace core
