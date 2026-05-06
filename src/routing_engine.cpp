@@ -23,7 +23,19 @@ TransportVector RoutingEngine::select_vector(double local_omega, const KnownPeer
     return TransportVector::VectorA_Resonant;
 }
 
+bool RoutingEngine::is_vector_a_viable() const {
+    std::lock_guard<std::mutex> lock(map_mutex_);
+    for (const auto& [signature, peer] : mesh_map_) {
+        if (peer.path_fitness >= 0.2) return true;
+    }
+    return false;
+}
+
 bool RoutingEngine::modulate_iat(double delta_theta, const std::vector<double>& current_stream) {
+    if (!transduction_allowed_) {
+        return false;
+    }
+
     // Encode phase shift into Inter-Arrival Time (IAT)
     double delay_ns = K_iat * std::abs(delta_theta);
 
@@ -68,9 +80,9 @@ void RoutingEngine::refract_wavefront(const wave_native::core::WaveState& state_
     double delta_theta = state_out.theta - state_in.theta;
 
     // Attempt to transduce the state shift into the carrier
-    if (!modulate_iat(delta_theta, current_stream)) {
-        // Fallback to Resonant if Transduction fails
-        std::cout << "[RoutingEngine] Refraction failed, fallback to physical transmission (Vector A).\n";
+    if (!transduction_allowed_ || !modulate_iat(delta_theta, current_stream)) {
+        // Fallback to Resonant if Transduction fails or is disabled
+        std::cout << "[RoutingEngine] Refraction failed or disabled, fallback to physical transmission (Vector A).\n";
         // Simulate falling back to Vector A (e.g. queueing for physical broadcast)
     }
 }
@@ -84,7 +96,7 @@ void RoutingEngine::propagate_state(const wave_native::core::WaveState& local_st
 
         TransportVector vector = select_vector(local_state.omega, peer);
 
-        if (vector == TransportVector::VectorB_Transduction) {
+        if (vector == TransportVector::VectorB_Transduction && transduction_allowed_) {
             // Attempt to map continuous wave-state to discrete IAT
             // Here delta_theta is derived from current state derivative for simplicity
             double delta_theta = local_state.x_dot * 0.01; // Example transduction mapping

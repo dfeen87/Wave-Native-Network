@@ -22,6 +22,9 @@ public:
     // Consume the current normalized amplitude buffer
     std::vector<double> consume_stream();
 
+    // Consume the stream of Inter-Arrival Times (IAT)
+    std::vector<double> consume_iats();
+
     // Asynchronously injects a packet after a specified delay to modulate IAT
     void inject_modulated_packet(double delay_ns);
 
@@ -38,6 +41,10 @@ private:
 
     std::mutex stream_mutex_;
     std::vector<double> amplitude_stream_;
+
+    std::mutex iat_mutex_;
+    std::vector<double> iat_stream_;
+    struct timeval last_packet_time_ = {0, 0};
 
     // Asynchronous injection queue
     std::thread injector_thread_;

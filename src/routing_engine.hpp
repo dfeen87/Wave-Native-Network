@@ -46,6 +46,10 @@ public:
                            const wave_native::core::WaveState& state_out,
                            const std::vector<double>& current_stream);
 
+    // AILEE Guardrails
+    void set_transduction_allowed(bool allowed) { transduction_allowed_ = allowed; }
+    bool is_vector_a_viable() const;
+
 private:
     // Decide between Vector A and Vector B
     TransportVector select_vector(double local_omega, const KnownPeer& peer) const;
@@ -64,6 +68,8 @@ private:
     double baseline_entropy_;
     int entropy_samples_;
     const double K_iat = 1000000.0; // Nanoseconds per radian
+
+    bool transduction_allowed_ = true;
 };
 
 } // namespace core
