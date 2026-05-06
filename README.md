@@ -1,5 +1,4 @@
 # Wave-Native Network (WNN)
-> **A Physics-Defined Stealth Layer for the Internet**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Build: C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)]()
