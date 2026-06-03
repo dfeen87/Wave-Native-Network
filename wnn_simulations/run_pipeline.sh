@@ -7,4 +7,6 @@ BUILD_DIR="${SCRIPT_DIR}/build"
 cmake -S "${SCRIPT_DIR}" -B "${BUILD_DIR}"
 cmake --build "${BUILD_DIR}" -j"$(nproc)"
 "${BUILD_DIR}/wnn_sim_runner"
+
+python3 -m pip install --user --quiet pandas matplotlib seaborn
 python3 "${SCRIPT_DIR}/generate_figures.py"
