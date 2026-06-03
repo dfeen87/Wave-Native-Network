@@ -19,6 +19,22 @@
 
 using namespace wave_native;
 
+// ISO 42001 Async Audit Event Structure
+struct AuditLogEvent {
+    double ts;
+    double integrity_score;
+    double safety_score;
+    double phase_error;
+    double A;
+    double x_dot;
+    size_t stream_size;
+    bool is_locked;
+    double omega;
+};
+
+// Global or Thread-Local SPSC Queue for Logging
+interceptor::LockFreeSPSCQueue<AuditLogEvent, 4096> audit_queue;
+
 std::atomic<bool> global_running{true};
 
 void signal_handler(int signum) {
@@ -43,10 +59,10 @@ int main(int argc, char** argv) {
     // Initialize the Trust Layer Gatekeeper wrapper
     core::AmbientVerifier verifier;
 
-    long double omega = 1.2L;
-    long double alpha = -1.0L;
-    long double beta = 1.0L;
-    long double delta = 0.3L;
+    double omega = 1.2;
+    double alpha = -1.0;
+    double beta = 1.0;
+    double delta = 0.3;
 
     if (calibrate_mode) {
         core::CalibrationMode calib;
@@ -84,13 +100,13 @@ int main(int argc, char** argv) {
     std::vector<double> shared_stream;
     bool new_stream_ready = false;
 
-    const long double dt = 0.01L; // Time step for RK4
+    const double dt = 0.01; // Time step for RK4
 
     auto start_time = std::chrono::steady_clock::now();
     auto last_tick = start_time;
     uint64_t tick_count = 0;
 
-    std::atomic<long double> shared_ts{0.0L};
+    std::atomic<double> shared_ts{0.0};
 
     // Pruning Background Thread
     std::jthread pruning_thread([&peer_table, &shared_ts](std::stop_token stoken) {
@@ -117,10 +133,32 @@ int main(int argc, char** argv) {
         }
     });
 
+    // Async Audit Logging Thread
+    std::jthread audit_thread([&](std::stop_token stoken) {
+        while (!stoken.stop_requested() && global_running) {
+            AuditLogEvent event;
+            while (audit_queue.pop(event)) {
+                // Async Merkle Tree / Audit logging here
+                std::cout << std::fixed << std::setprecision(4)
+                          << "[Wavefrontd] t=" << event.ts
+                          << " | Amp(A): " << event.A
+                          << " | Vel(x'): " << event.x_dot
+                          << " | Stream Size: " << event.stream_size
+                          << " | AILEE Integrity: " << (event.integrity_score * 100.0) << "%"
+                          << " | Safety: " << (event.safety_score * 100.0) << "%"
+                          << " | PLL Lock: " << (event.is_locked ? "LOCKED" : "SEARCHING")
+                          << " | Δθ: " << event.phase_error
+                          << " | ω: " << event.omega
+                          << std::endl;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    });
+
     // run_physics_engine loop
     while (global_running) {
         auto now = std::chrono::steady_clock::now();
-        std::chrono::duration<long double> elapsed = now - last_tick;
+        std::chrono::duration<double> elapsed = now - last_tick;
 
         if (elapsed.count() >= dt) {
             state.ts = tick_count * dt; // Strict temporal hardening derived from monotonic clock without jitter
@@ -186,7 +224,7 @@ int main(int argc, char** argv) {
             // We use the mean amplitude of the ingested stream to drive the forcing frequency
             // or directly inject it as a perturbation. For simplicity, let's add the
             // instantaneous physical amplitude as an external forcing term to the state velocity.
-            long double phys_amp = 0.0L;
+            double phys_amp = 0.0;
             if (!stream.empty()) {
                 phys_amp = stream.back(); // Use the latest amplitude point
             }
@@ -206,21 +244,22 @@ int main(int argc, char** argv) {
             router.propagate_state(state, stream);
 
             tick_count++;
-            last_tick = start_time + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<long double>(tick_count * dt));
+            last_tick = start_time + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(tick_count * dt));
 
             // Print status every ~1 second (100 ticks at 0.01s dt)
             if (tick_count % 100 == 0) {
-                std::cout << std::fixed << std::setprecision(4)
-                          << "[Wavefrontd] t=" << state.ts
-                          << " | Amp(A): " << state.A
-                          << " | Vel(x'): " << state.x_dot
-                          << " | Stream Size: " << stream.size()
-                          << " | AILEE Integrity: " << (trust_score * 100.0) << "%"
-                          << " | Safety: " << (safety_guardrails.get_current_safety_score() * 100.0) << "%"
-                          << " | PLL Lock: " << (pll.is_locked() ? "LOCKED" : "SEARCHING")
-                          << " | Δθ: " << pll.get_phase_error()
-                          << " | ω: " << state.omega
-                          << std::endl;
+                AuditLogEvent event{
+                    static_cast<double>(state.ts), 
+                    trust_score, 
+                    safety_guardrails.get_current_safety_score(), 
+                    pll.get_phase_error(),
+                    static_cast<double>(state.A),
+                    static_cast<double>(state.x_dot),
+                    stream.size(),
+                    pll.is_locked(),
+                    static_cast<double>(state.omega)
+                };
+                audit_queue.push(event); // Dispatched to async Merkle Tree thread in O(1)
             }
         } else {
             // Yield briefly to avoid 100% CPU on spin

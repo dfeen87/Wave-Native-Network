@@ -12,7 +12,7 @@
 namespace wave_native {
 namespace core {
 
-bool CalibrationMode::run_sweep(long double& out_omega) {
+bool CalibrationMode::run_sweep(double& out_omega) {
     std::cout << "[Calibration] Starting non-linear frequency sweep (500 Hz -> 20 kHz)...\n";
 
     double best_omega = 500.0;
@@ -84,7 +84,7 @@ bool CalibrationMode::run_sweep(long double& out_omega) {
     return true;
 }
 
-bool CalibrationMode::save_profile(const std::string& path, long double omega, long double alpha, long double beta, long double delta) {
+bool CalibrationMode::save_profile(const std::string& path, double omega, double alpha, double beta, double delta) {
     std::ofstream out(path, std::ios::binary);
     if (!out) return false;
     out.write(reinterpret_cast<const char*>(&omega), sizeof(omega));
@@ -94,7 +94,7 @@ bool CalibrationMode::save_profile(const std::string& path, long double omega, l
     return true;
 }
 
-bool CalibrationMode::load_profile(const std::string& path, long double& omega, long double& alpha, long double& beta, long double& delta) {
+bool CalibrationMode::load_profile(const std::string& path, double& omega, double& alpha, double& beta, double& delta) {
     std::ifstream in(path, std::ios::binary);
     if (!in) return false;
     in.read(reinterpret_cast<char*>(&omega), sizeof(omega));
