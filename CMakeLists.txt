@@ -21,6 +21,8 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(ailee_trust_layer)
 
+add_subdirectory(simulations)
+
 add_executable(wavefrontd
     src/wavefrontd.cpp
     src/interceptor/phy_listener.cpp
