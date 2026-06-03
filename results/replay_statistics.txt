@@ -1,0 +1,9 @@
+Replay Detection Statistics
+Threshold: 0.620
+True Positive Rate (TPR): 0.408824
+False Positive Rate (FPR): 0.201182
+Detection Accuracy: 0.765724
+Confusion Matrix (Actual x Predicted)
+               Predicted Normal  Predicted Replay
+Actual Normal               8787              2213
+Actual Replay                603               417
