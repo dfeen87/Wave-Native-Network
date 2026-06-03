@@ -17,6 +17,9 @@ int main() {
         for (uint32_t seed : seeds()) {
             std::mt19937 rng(seed);
             std::normal_distribution<double> disturbance(0.0, 0.015);
+            std::normal_distribution<double> baseline_jitter_spike(0.0, 0.35);
+            std::uniform_real_distribution<double> phase_reset(-M_PI, M_PI);
+            bool baseline_reset_applied = false;
 
             PairSimState s;
             s.b.theta = 0.4;
@@ -31,7 +34,16 @@ int main() {
                 if (mode == "WNN") {
                     s.b.omega += (target_omega - s.b.omega) * 0.08 + (-0.06 * wrap_pi(s.b.theta - s.a.theta) + d) * kDt;
                 } else {
-                    s.b.omega += (target_omega - s.b.omega) * 0.02 + 2.5 * d * kDt;
+                    if (!baseline_reset_applied && step == handoff_step) {
+                        s.b = wave_native::core::WaveState{};
+                        s.b.theta = phase_reset(rng);
+                        s.b.omega = target_omega + baseline_jitter_spike(rng);
+                        baseline_reset_applied = true;
+                    }
+
+                    const double disruption_scale = handoff_event ? 8.0 : 2.5;
+                    const double disruption_jitter = handoff_event ? baseline_jitter_spike(rng) : 0.0;
+                    s.b.omega += (target_omega - s.b.omega) * 0.01 + disruption_scale * d * kDt + disruption_jitter * kDt;
                 }
                 s.b.omega = std::clamp(s.b.omega, 0.8, 1.6);
 
