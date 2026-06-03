@@ -2,7 +2,6 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Build: C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)]()
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20055940.svg?refresh=1)](https://doi.org/10.5281/zenodo.20055940)
 
 > **A bare-metal, phase-coherent orchestration protocol for the Distributed AI-RAN Continuum and Decentralized Edge Inference.**
 
