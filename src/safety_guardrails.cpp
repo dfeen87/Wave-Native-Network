@@ -30,7 +30,7 @@ void SafetyGuardrails::process_iat_samples(const std::vector<double>& iats) {
             iat_window_.pop_front();
         }
 
-        if (go_dark_active_) {
+        if (go_dark_active_.load(std::memory_order_acquire)) {
             recovery_counter_++;
         }
     }
@@ -61,7 +61,7 @@ void SafetyGuardrails::process_iat_samples(const std::vector<double>& iats) {
     }
 
     // Continuously drift baseline slowly if we are safe
-    if (!go_dark_active_) {
+    if (!go_dark_active_.load(std::memory_order_acquire)) {
         baseline_variance_ = 0.999 * baseline_variance_ + 0.001 * current_variance;
     }
 
@@ -73,12 +73,17 @@ void SafetyGuardrails::process_iat_samples(const std::vector<double>& iats) {
     current_safety_score_ = std::max(0.0, std::min(1.0, s));
 
     // 3. The "Go-Dark" Protocol
-    if (safety_mode_ != SafetyMode::OFF && !go_dark_active_ && current_safety_score_ < s_crit_) {
+    if (safety_mode_ != SafetyMode::OFF && !go_dark_active_.load(std::memory_order_acquire) && current_safety_score_ < s_crit_) {
+        // Initiate hardware lockdown
+        go_dark_active_.store(true, std::memory_order_release);
+        
+        // Strict fence to ensure flush guarantees propagate to all cores
+        std::atomic_thread_fence(std::memory_order_seq_cst);
+
         std::cout << "\n[SAFETY] Carrier Opacity Detected (Ω=" << std::fixed << std::setprecision(2) << omega << "). Entering Deep Stealth.\n";
 
         routing_engine_->set_transduction_allowed(false);
         routing_engine_->flush_transduction_queue();
-        go_dark_active_ = true;
         recovery_counter_ = 0;
 
         if (!routing_engine_->is_vector_a_viable()) {
@@ -89,11 +94,13 @@ void SafetyGuardrails::process_iat_samples(const std::vector<double>& iats) {
     }
 
     // 4. Autonomous Re-Emergence
-    if (go_dark_active_) {
+    if (go_dark_active_.load(std::memory_order_acquire)) {
         if (recovery_counter_ >= recovery_threshold_) {
             if (current_safety_score_ > 0.85) {
                 std::cout << "\n[SAFETY] Carrier translucency restored (S=" << std::fixed << std::setprecision(2) << current_safety_score_ << "). Re-emerging from stealth.\n";
-                go_dark_active_ = false;
+                go_dark_active_.store(false, std::memory_order_release);
+                std::atomic_thread_fence(std::memory_order_seq_cst);
+                
                 routing_engine_->set_transduction_allowed(true);
                 pll_->unfreeze_integral();
                 duffing_->set_ambient_mode(false);

@@ -74,35 +74,23 @@ void PhyListener::listener_loop(std::stop_token stoken) {
         // Mock mode if no interface
         while (running_ && !stoken.stop_requested()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            std::lock_guard<std::mutex> lock(stream_mutex_);
             // Generate some fake "noise" amplitude
-            amplitude_stream_.push_back(((double)rand() / RAND_MAX) * 2.0 - 1.0);
+            spsc_amplitude_queue_.push(((double)rand() / RAND_MAX) * 2.0 - 1.0);
         }
     }
 }
 
 void PhyListener::packet_handler(u_char* user, const struct pcap_pkthdr* pkthdr, const u_char* packet) {
-    PhyListener* listener = reinterpret_cast<PhyListener*>(user);
-    if (!listener->running_) return;
+    auto* listener = reinterpret_cast<PhyListener*>(user);
+    if (!listener->running_.load(std::memory_order_acquire)) return;
 
-    // Convert raw binary noise into floating-point amplitude stream
-    // Treat the packet as continuous wave
-    std::vector<double> new_amplitudes;
-    new_amplitudes.reserve(pkthdr->caplen);
+    // Strict boundary enforcement via std::span, capped to 2048 MTU to prevent unbounded loops
+    std::span<const u_char> payload(packet, std::min(pkthdr->caplen, static_cast<bpf_u_int32>(2048)));
 
-    for (bpf_u_int32 i = 0; i < pkthdr->caplen; ++i) {
-        // Normalize 0-255 to -1.0 to 1.0
-        double amp = (static_cast<double>(packet[i]) - 127.5) / 127.5;
-        new_amplitudes.push_back(amp);
-    }
-
-    std::lock_guard<std::mutex> lock(listener->stream_mutex_);
-    listener->amplitude_stream_.insert(listener->amplitude_stream_.end(), new_amplitudes.begin(), new_amplitudes.end());
-
-    // Cap size to avoid out-of-memory if not consumed fast enough
-    if (listener->amplitude_stream_.size() > 100000) {
-        listener->amplitude_stream_.erase(listener->amplitude_stream_.begin(),
-            listener->amplitude_stream_.begin() + (listener->amplitude_stream_.size() - 100000));
+    for (u_char byte : payload) {
+        double amp = (static_cast<double>(byte) - 127.5) / 127.5;
+        // Zero-allocation, lock-free push
+        listener->spsc_amplitude_queue_.push(amp); 
     }
 
     // Calculate Inter-Arrival Time (IAT)
@@ -115,26 +103,25 @@ void PhyListener::packet_handler(u_char* user, const struct pcap_pkthdr* pkthdr,
     listener->last_packet_time_ = pkthdr->ts;
 
     if (iat_ns > 0.0) {
-        std::lock_guard<std::mutex> iat_lock(listener->iat_mutex_);
-        listener->iat_stream_.push_back(iat_ns);
-        if (listener->iat_stream_.size() > 100000) {
-            listener->iat_stream_.erase(listener->iat_stream_.begin(),
-                listener->iat_stream_.begin() + (listener->iat_stream_.size() - 100000));
-        }
+        listener->spsc_iat_queue_.push(iat_ns);
     }
 }
 
 std::vector<double> PhyListener::consume_stream() {
-    std::lock_guard<std::mutex> lock(stream_mutex_);
-    std::vector<double> stream = std::move(amplitude_stream_);
-    amplitude_stream_.clear();
+    std::vector<double> stream;
+    double item;
+    while (spsc_amplitude_queue_.pop(item)) {
+        stream.push_back(item);
+    }
     return stream;
 }
 
 std::vector<double> PhyListener::consume_iats() {
-    std::lock_guard<std::mutex> lock(iat_mutex_);
-    std::vector<double> stream = std::move(iat_stream_);
-    iat_stream_.clear();
+    std::vector<double> stream;
+    double item;
+    while (spsc_iat_queue_.pop(item)) {
+        stream.push_back(item);
+    }
     return stream;
 }
 

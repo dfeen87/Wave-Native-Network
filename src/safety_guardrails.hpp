@@ -22,7 +22,7 @@ public:
     // Process a batch of newly observed Inter-Arrival Times (IAT)
     void process_iat_samples(const std::vector<double>& iats);
 
-    bool is_go_dark_active() const { return go_dark_active_; }
+    bool is_go_dark_active() const { return go_dark_active_.load(std::memory_order_acquire); }
     double get_current_safety_score() const { return current_safety_score_; }
 
 private:
@@ -42,7 +42,7 @@ private:
     double s_crit_ = 0.40;
     SafetyMode safety_mode_;
 
-    bool go_dark_active_;
+    std::atomic<bool> go_dark_active_{false};
     size_t recovery_counter_;
     const size_t recovery_threshold_ = 20000;
 };
