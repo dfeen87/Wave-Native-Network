@@ -51,6 +51,8 @@ file(GLOB_RECURSE WNN_CORE_SOURCES
     "${CMAKE_SOURCE_DIR}/src/sync_membrane/*.cpp"
 )
 
+message(STATUS "WNN_CORE_SOURCES = ${WNN_CORE_SOURCES}")
+    
 add_library(wnn_core ${WNN_CORE_SOURCES})
 
 target_include_directories(wnn_core PUBLIC
@@ -61,9 +63,13 @@ target_link_libraries(wnn_core
     PRIVATE
         nlohmann_json::nlohmann_json
         m
-        atomic
         Threads::Threads
 )
+
+# Linux-only atomic support
+if (NOT APPLE)
+    target_link_libraries(wnn_core PRIVATE atomic)
+endif()
 
 # ---------------------------------------------------------
 # WNN Vehicle Demo
@@ -105,3 +111,4 @@ target_link_libraries(wavefrontd
         atomic
         Threads::Threads
 )
+
