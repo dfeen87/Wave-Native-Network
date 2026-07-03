@@ -4,8 +4,8 @@
 namespace wnn {
 namespace space {
 
-PhaseCoherenceAnchor::PhaseCoherenceAnchor(const PhaseAnchorConfig& cfg)
-    : config_(cfg) {}
+PhaseCoherenceAnchor::PhaseCoherenceAnchor(AnchorId id, const PhaseAnchorConfig& cfg)
+    : id_(id), config_(cfg) {}
 
 PhaseAnchorSignal PhaseCoherenceAnchor::compute_signal(const OrbitalState& state) const {
     // Start with baseline signal
@@ -73,30 +73,82 @@ double PhaseCoherenceAnchor::compute_trust_score() const {
     return 0.4 * phase_stability_score_ + 0.4 * handshake_success_rate + 0.2 * failure_penalty;
 }
 
-std::vector<CoherenceCluster> build_coherence_clusters(std::vector<PhaseCoherenceAnchor>& anchors) {
+CoherenceEngine::CoherenceEngine(const wave_native::core::WnnConfig& config)
+    : config_(config) {}
+
+void CoherenceEngine::add_anchor(const PhaseCoherenceAnchor& anchor) {
+    anchors_.push_back(anchor);
+}
+
+std::vector<CoherenceCluster> CoherenceEngine::build_coherence_clusters() const {
     std::vector<CoherenceCluster> clusters;
 
-    // Very simple clustering: group anchors with high trust scores together
+    // Very simple clustering logic for this implementation:
+    // We'll put anchors into a single main cluster for now, filtering by trust threshold.
+    // In a real system, you would group by phase difference.
+
     CoherenceCluster main_cluster;
-    main_cluster.cluster_coherence_score = 0.0;
     main_cluster.average_phase_deg = 0.0;
+    main_cluster.cluster_coherence_score = 0.0;
+    main_cluster.average_trust_score = 0.0;
+    main_cluster.is_stable = false;
 
     double total_score = 0.0;
-    for (auto& anchor : anchors) {
-        if (anchor.compute_trust_score() > 0.6) {
-            main_cluster.anchors.push_back(&anchor);
-            total_score += anchor.compute_trust_score();
-            // Placeholder for real phase math:
-            main_cluster.average_phase_deg += 0.0;
-        }
+    double total_phase_error = 0.0; // Simulated phase error
+
+    for (const auto& anchor : anchors_) {
+        double trust = compute_trust_score(anchor.id());
+
+        // As a simplification, group all valid anchors together
+        main_cluster.anchors.push_back(anchor.id());
+        total_score += trust;
+
+        // Placeholder for real phase difference calculation
+        total_phase_error += 0.0; // Assume perfect phase for this demo
     }
 
     if (!main_cluster.anchors.empty()) {
-        main_cluster.cluster_coherence_score = total_score / main_cluster.anchors.size();
+        main_cluster.average_trust_score = total_score / main_cluster.anchors.size();
+        main_cluster.cluster_coherence_score = main_cluster.average_trust_score; // Alias for simplicity
+
+        // Simulated average phase error
+        double average_phase_error = total_phase_error / main_cluster.anchors.size();
+
+        main_cluster.is_stable = (average_phase_error < config_.coherence_phase_error_threshold) &&
+                                 (main_cluster.average_trust_score > config_.coherence_trust_threshold) &&
+                                 (main_cluster.anchors.size() >= config_.coherence_min_cluster_size);
+
         clusters.push_back(main_cluster);
     }
 
     return clusters;
+}
+
+double CoherenceEngine::compute_trust_score(AnchorId anchor_id) const {
+    for (const auto& anchor : anchors_) {
+        if (anchor.id() == anchor_id) {
+            return anchor.compute_trust_score();
+        }
+    }
+    return 0.0; // Not found
+}
+
+double CoherenceEngine::compute_multi_anchor_trust(const std::vector<AnchorId>& anchor_ids) const {
+    if (anchor_ids.empty()) return 0.0;
+
+    double total_trust = 0.0;
+    std::size_t valid_anchors = 0;
+
+    for (AnchorId id : anchor_ids) {
+        double trust = compute_trust_score(id);
+        if (trust > 0.0) { // Assume 0.0 means not found or fully untrusted
+            total_trust += trust;
+            valid_anchors++;
+        }
+    }
+
+    if (valid_anchors == 0) return 0.0;
+    return total_trust / valid_anchors;
 }
 
 } // namespace space

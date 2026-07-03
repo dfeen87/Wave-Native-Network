@@ -22,6 +22,11 @@ struct WnnConfig {
     bool diagnostic_mode = false;
     bool stress_mode = false;
 
+    // Phase Coherence Cluster thresholds
+    double coherence_phase_error_threshold = 5.0;
+    double coherence_trust_threshold = 0.6;
+    std::size_t coherence_min_cluster_size = 2;
+
     static WnnConfig parse(int argc, char** argv) {
         WnnConfig config;
 

@@ -5,9 +5,12 @@
 #include <cmath>
 #include <cstdint>
 #include <algorithm>
+#include "../config/wnn_config.hpp"
 
 namespace wnn {
 namespace space {
+
+using AnchorId = std::uint32_t;
 
 struct OrbitalState {
     double altitude_km;
@@ -29,7 +32,9 @@ struct PhaseAnchorSignal {
 
 class PhaseCoherenceAnchor {
 public:
-    explicit PhaseCoherenceAnchor(const PhaseAnchorConfig& cfg);
+    PhaseCoherenceAnchor(AnchorId id, const PhaseAnchorConfig& cfg);
+
+    AnchorId id() const noexcept { return id_; }
 
     PhaseAnchorSignal compute_signal(const OrbitalState& state) const;
     void apply_relativistic_tuning(const OrbitalState& state, PhaseAnchorSignal& sig) const;
@@ -45,6 +50,7 @@ public:
     double get_phase_stability_score() const { return phase_stability_score_; }
 
 private:
+    AnchorId id_;
     PhaseAnchorConfig config_;
 
     // Internal metrics for trust score
@@ -62,12 +68,27 @@ struct AnchorLink {
 };
 
 struct CoherenceCluster {
-    std::vector<PhaseCoherenceAnchor*> anchors;
-    double cluster_coherence_score;
+    std::vector<AnchorId> anchors;
     double average_phase_deg;
+    double cluster_coherence_score;
+    double average_trust_score;
+    bool is_stable;
 };
 
-std::vector<CoherenceCluster> build_coherence_clusters(std::vector<PhaseCoherenceAnchor>& anchors);
+class CoherenceEngine {
+public:
+    explicit CoherenceEngine(const wave_native::core::WnnConfig& config);
+
+    void add_anchor(const PhaseCoherenceAnchor& anchor);
+
+    std::vector<CoherenceCluster> build_coherence_clusters() const;
+    double compute_trust_score(AnchorId anchor_id) const;
+    double compute_multi_anchor_trust(const std::vector<AnchorId>& anchor_ids) const;
+
+private:
+    wave_native::core::WnnConfig config_;
+    std::vector<PhaseCoherenceAnchor> anchors_;
+};
 
 } // namespace space
 } // namespace wnn

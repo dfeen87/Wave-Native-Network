@@ -134,5 +134,15 @@ SafetyReport SafetyGuardrails::generate_report() const {
     return report;
 }
 
+void SafetyGuardrails::report_unstable_cluster(const wnn::space::CoherenceCluster& cluster) {
+    if (!cluster.is_stable && cluster.average_trust_score < trust_score_threshold_) {
+        std::string description = "Unstable Coherence Cluster detected. Average phase error: " +
+                                  std::to_string(cluster.average_phase_deg) + " deg, average trust: " +
+                                  std::to_string(cluster.average_trust_score) + " with " +
+                                  std::to_string(cluster.anchors.size()) + " anchors.";
+        record_incident(SafetyIncidentType::CoherenceClusterUnstable, description);
+    }
+}
+
 } // namespace core
 } // namespace wave_native

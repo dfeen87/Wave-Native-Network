@@ -14,6 +14,7 @@
 #include "../mesh_legacy/zk_verifier.hpp"
 #include "wave_state.hpp"
 #include "interceptor/phy_listener.hpp"
+#include "space_segment/PhaseCoherenceAnchor.hpp"
 
 namespace wave_native {
 namespace core {
@@ -128,6 +129,12 @@ public:
      */
     void set_anchor_trust_scores(const std::vector<double>& scores) { anchor_trust_scores_ = scores; }
 
+    /**
+     * @brief Sets the optional coherence clusters.
+     * @param clusters The coherence clusters from the CoherenceEngine.
+     */
+    void set_coherence_clusters(const std::vector<wnn::space::CoherenceCluster>& clusters);
+
     // AILEE Guardrails
     void set_transduction_allowed(bool allowed) { transduction_allowed_ = allowed; }
     void flush_transduction_queue() {
@@ -162,6 +169,7 @@ private:
     bool transduction_allowed_ = true;
     double mesh_density_ = 0.0;
     std::vector<double> anchor_trust_scores_;
+    std::vector<wnn::space::CoherenceCluster> coherence_clusters_;
 };
 
 } // namespace core
