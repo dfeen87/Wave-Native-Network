@@ -18,6 +18,9 @@ struct WnnConfig {
     std::string interface = "eth0";
     bool calibrate_mode = false;
     SafetyMode safety_mode = SafetyMode::STRICT;
+    bool demo_mode = false;
+    bool diagnostic_mode = false;
+    bool stress_mode = false;
 
     static WnnConfig parse(int argc, char** argv) {
         WnnConfig config;
@@ -52,6 +55,12 @@ struct WnnConfig {
                 } else {
                     std::cerr << "Warning: Unknown safety mode '" << mode_str << "', defaulting to strict.\n";
                 }
+            } else if (std::strcmp(argv[i], "--demo") == 0) {
+                config.demo_mode = true;
+            } else if (std::strcmp(argv[i], "--diagnostic") == 0) {
+                config.diagnostic_mode = true;
+            } else if (std::strcmp(argv[i], "--stress") == 0) {
+                config.stress_mode = true;
             } else {
                 config.interface = argv[i];
             }

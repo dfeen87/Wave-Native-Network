@@ -12,8 +12,30 @@
 #include "wave_state.hpp"
 #include "config/wnn_config.hpp"
 
+#include <chrono>
+
 namespace wave_native {
 namespace core {
+
+enum class SafetyIncidentType {
+    GoDarkActivated,
+    TrustThresholdBreach,
+    CoherenceFailure,
+    Unknown
+};
+
+struct SafetyIncident {
+    std::chrono::steady_clock::time_point timestamp;
+    SafetyIncidentType type;
+    std::string description;
+};
+
+struct SafetyReport {
+    std::vector<SafetyIncident> recent_incidents;
+    double trust_score_threshold;
+    double coherence_failure_threshold;
+    bool go_dark_active;
+};
 
 class SafetyGuardrails {
 public:
@@ -24,6 +46,9 @@ public:
 
     bool is_go_dark_active() const { return go_dark_active_.load(std::memory_order_acquire); }
     double get_current_safety_score() const { return current_safety_score_; }
+
+    SafetyReport generate_report() const;
+    void record_incident(SafetyIncidentType type, const std::string& description);
 
 private:
     RoutingEngine* routing_engine_;
@@ -45,6 +70,10 @@ private:
     std::atomic<bool> go_dark_active_{false};
     size_t recovery_counter_;
     const size_t recovery_threshold_ = 20000;
+
+    double trust_score_threshold_ = 0.5;
+    double coherence_failure_threshold_ = 5.0;
+    std::deque<SafetyIncident> recent_incidents_;
 };
 
 } // namespace core

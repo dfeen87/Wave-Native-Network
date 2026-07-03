@@ -98,6 +98,11 @@ namespace mesh_legacy {
         std::optional<ResonantPeer> get_peer(const std::vector<uint8_t>& signature) const;
         void prune_decayed_peers(double current_time);
 
+        size_t get_peer_count() const {
+            std::shared_lock<std::shared_mutex> lock(mutex_);
+            return peers_.size();
+        }
+
     private:
         mutable std::shared_mutex mutex_;
         std::map<std::vector<uint8_t>, ResonantPeer> peers_;

@@ -36,15 +36,22 @@ struct AuditLogEvent {
 interceptor::LockFreeSPSCQueue<AuditLogEvent, 4096> audit_queue;
 
 std::atomic<bool> global_running{true};
+std::atomic<bool> global_reload_config{false};
 
 void signal_handler(int signum) {
-    std::cout << "\nInterrupt signal (" << signum << ") received. Shutting down...\n";
-    global_running = false;
+    if (signum == SIGINT || signum == SIGTERM) {
+        std::cout << "\nInterrupt signal (" << signum << ") received. Shutting down...\n";
+        global_running = false;
+    } else if (signum == SIGHUP) {
+        std::cout << "\nSIGHUP received. Reloading configuration...\n";
+        global_reload_config = true;
+    }
 }
 
 int main(int argc, char** argv) {
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
+    std::signal(SIGHUP, signal_handler);
 
     core::WnnConfig config = core::WnnConfig::parse(argc, argv);
     std::string interface = config.interface;
@@ -246,8 +253,30 @@ int main(int argc, char** argv) {
             tick_count++;
             last_tick = start_time + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(tick_count * dt));
 
-            // Print status every ~1 second (100 ticks at 0.01s dt)
-            if (tick_count % 100 == 0) {
+    // Handle configuration reloading
+    if (global_reload_config) {
+        config = core::WnnConfig::parse(argc, argv);
+        global_reload_config = false;
+        std::cout << "[INFO] Configuration reloaded.\n";
+    }
+
+    // Determine logging frequency based on mode
+    int log_frequency = 100;
+    if (config.demo_mode) {
+        log_frequency = 500; // Less frequent
+    } else if (config.diagnostic_mode) {
+        log_frequency = 50;  // More frequent
+    }
+
+    // Apply stress mode adjustments
+    double local_dt = dt;
+    if (config.stress_mode) {
+        // Higher update rate or simulated jitter
+        state.theta += (static_cast<double>(rand()) / RAND_MAX - 0.5) * 0.1;
+    }
+
+    // Print status every `log_frequency` ticks
+    if (tick_count % log_frequency == 0) {
                 AuditLogEvent event{
                     static_cast<double>(state.ts), 
                     trust_score, 
@@ -260,6 +289,12 @@ int main(int argc, char** argv) {
                     static_cast<double>(state.omega)
                 };
                 audit_queue.push(event); // Dispatched to async Merkle Tree thread in O(1)
+
+        if (config.diagnostic_mode) {
+            std::cout << "[DIAGNOSTIC] Wavefront update rate: " << (1.0 / local_dt) << " Hz\n";
+            std::cout << "[DIAGNOSTIC] Anchor coherence summary: Tracking " << peer_table.get_peer_count() << " resonant peers.\n";
+            std::cout << "[DIAGNOSTIC] Routing mode summary: Transduction=" << (router.is_vector_a_viable() ? "OFF" : "ON") << "\n";
+        }
             }
         } else {
             // Yield briefly to avoid 100% CPU on spin
