@@ -7,11 +7,17 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -flto")
 
 find_package(Threads REQUIRED)
 
+# ---------------------------------------------------------
+# Include directories
+# ---------------------------------------------------------
 include_directories(
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/mesh_legacy
 )
 
+# ---------------------------------------------------------
+# Fetch AILEE Trust Layer
+# ---------------------------------------------------------
 include(FetchContent)
 FetchContent_Declare(
     ailee_trust_layer
@@ -21,6 +27,9 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(ailee_trust_layer)
 
+# ---------------------------------------------------------
+# Fetch nlohmann_json
+# ---------------------------------------------------------
 FetchContent_Declare(
     nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
@@ -28,16 +37,43 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# ---------------------------------------------------------
+# Simulations subdirectory
+# ---------------------------------------------------------
 add_subdirectory(simulations)
 
-add_library(wnn_core
-    src/space_segment/PhaseCoherenceAnchor.cpp
-    src/infrastructure_segment/BareMetalEngine.cpp
-    src/sync_membrane/SyncMembrane.cpp
+# ---------------------------------------------------------
+# Wave Native Network Core (WNN v2.0.0)
+# ---------------------------------------------------------
+file(GLOB_RECURSE WNN_CORE_SOURCES
+    "${CMAKE_SOURCE_DIR}/src/space_segment/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/infrastructure_segment/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/sync_membrane/*.cpp"
 )
 
+add_library(wnn_core ${WNN_CORE_SOURCES})
+
+target_include_directories(wnn_core PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(wnn_core
+    PRIVATE
+        nlohmann_json::nlohmann_json
+        m
+        atomic
+        Threads::Threads
+)
+
+# ---------------------------------------------------------
+# WNN Vehicle Demo
+# ---------------------------------------------------------
 add_executable(wnn_vehicle_demo
     examples/wnn_vehicle_demo.cpp
+)
+
+target_include_directories(wnn_vehicle_demo PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
 )
 
 target_link_libraries(wnn_vehicle_demo
@@ -46,6 +82,9 @@ target_link_libraries(wnn_vehicle_demo
         nlohmann_json::nlohmann_json
 )
 
+# ---------------------------------------------------------
+# Wavefront Daemon (legacy mesh + new WNN integration)
+# ---------------------------------------------------------
 add_executable(wavefrontd
     src/wavefrontd.cpp
     src/interceptor/phy_listener.cpp
@@ -60,15 +99,8 @@ add_executable(wavefrontd
 )
 
 target_link_libraries(wavefrontd
-    pcap
-    m
-    atomic
-    Threads::Threads
-)
-
-target_link_libraries(wnn_core
     PRIVATE
-        nlohmann_json::nlohmann_json
+        pcap
         m
         atomic
         Threads::Threads
