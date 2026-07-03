@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Build: C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)]()
-[![CI](https://github.com/dfeen87/Wave-Native-Network/workflows/CI/badge.svg)](https://github.com/dfeen87/Wave-Native-Network/actions)
+[![CI](https://github.com/dfeen87/Wave-Native-Network/actions/workflows/ci.yml/badge.svg)](https://github.com/dfeen87/Wave-Native-Network/actions)
 
 > **A Deterministic Phase-Coherence Overlay for Edge Synchronization and Handoff-Stable Routing**
 
