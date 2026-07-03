@@ -144,21 +144,68 @@ RouteDecision RoutingEngine::compute_route(const wave_native::core::WaveState& s
     decision.estimated_latency_ms = 9999.0;
     decision.estimated_stability_score = 0.0;
 
-    // Simple heuristic incorporating mesh density and anchor trust
-    double density_factor = std::clamp(mesh_density_, 0.1, 1.0);
-    double avg_trust = 1.0;
+    if (mesh_map_.empty()) {
+        return decision;
+    }
 
+    double D = std::clamp(mesh_density_, 0.0, 1.0);
+    double density_factor = 0.5 + 0.5 * D;
+
+    double avg_anchor_trust = 1.0;
     if (!anchor_trust_scores_.empty()) {
         double sum = 0.0;
         for (double t : anchor_trust_scores_) sum += t;
-        avg_trust = sum / anchor_trust_scores_.size();
+        avg_anchor_trust = sum / anchor_trust_scores_.size();
     }
 
-    std::vector<std::pair<double, KnownPeer>> candidates;
+    struct CandidateScore {
+        double score;
+        const KnownPeer* peer;
+        TransportVector vector;
+        double latency_ms;
+        double trust;
+    };
+
+    std::vector<CandidateScore> candidates;
+
     for (const auto& [signature, peer] : mesh_map_) {
-        double dist = calculate_hybrid_distance(peer, state);
-        if (dist < 1.0) {
-            candidates.emplace_back(dist, peer);
+        // For each peer, we consider both VectorA and VectorB as potential candidates
+        for (TransportVector vec : {TransportVector::VectorA_Resonant, TransportVector::VectorB_Transduction}) {
+            if (vec == TransportVector::VectorB_Transduction && !transduction_allowed_) {
+                continue; // Skip Transduction if not allowed globally
+            }
+
+            double latency_ms = peer.latency_ema.load() / 1000000.0;
+            // Add a small arbitrary overhead for transduction in our estimation
+            if (vec == TransportVector::VectorB_Transduction) {
+                latency_ms += 5.0; // 5ms baseline overhead
+            }
+
+            // Adjust trust slightly based on vector choice and average anchor trust
+            double trust = peer.trust_score.consistency_score;
+            if (vec == TransportVector::VectorB_Transduction) {
+                trust = trust * avg_anchor_trust;
+            }
+
+            // Normalization
+            double latency_score = 1.0 / (1.0 + latency_ms);
+            double trust_score = std::clamp(trust, 0.0, 1.0);
+
+            double composite_score = 0.0;
+            if (mode == RoutingMode::LOW_LATENCY) {
+                composite_score = latency_score;
+            } else if (mode == RoutingMode::HIGH_STABILITY) {
+                composite_score = trust_score;
+            } else { // BALANCED
+                composite_score = 0.4 * latency_score + 0.6 * trust_score;
+            }
+
+            double final_score = composite_score * density_factor;
+
+            // Only add valid candidates
+            if (calculate_hybrid_distance(peer, state) < 1.0) {
+                candidates.push_back({final_score, &peer, vec, latency_ms, trust});
+            }
         }
     }
 
@@ -166,86 +213,49 @@ RouteDecision RoutingEngine::compute_route(const wave_native::core::WaveState& s
         return decision;
     }
 
+    // Sort candidates by final score descending
     std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
-        return a.first < b.first;
+        return a.score > b.score;
     });
 
-    // Choose the best peer based on mode
-    const KnownPeer* selected = nullptr;
+    const CandidateScore& best = candidates.front();
 
-    if (mode == RoutingMode::LOW_LATENCY) {
-        // Sort by latency
-        std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
-            return a.second.latency_ema.load() < b.second.latency_ema.load();
-        });
-        selected = &candidates.front().second;
-    } else if (mode == RoutingMode::HIGH_STABILITY) {
-        // Sort by trust score and inverse jitter
-        std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
-            double score_a = a.second.trust_score.consistency_score / (a.second.jitter_ema.load() + 1.0);
-            double score_b = b.second.trust_score.consistency_score / (b.second.jitter_ema.load() + 1.0);
-            return score_a > score_b;
-        });
-        selected = &candidates.front().second;
-    } else {
-        // BALANCED: use the already sorted by hybrid distance
-        selected = &candidates.front().second;
-    }
-
-    if (selected) {
-        decision.is_valid = true;
-        decision.destination_peer = selected->signature;
-
-        TransportVector vec = select_vector(state.omega, *selected);
-
-        // Adjust vector preference based on anchor trust
-        if (vec == TransportVector::VectorB_Transduction && avg_trust < 0.5) {
-            // If anchors are untrusted, prefer resonant
-            vec = TransportVector::VectorA_Resonant;
-        }
-
-        decision.selected_vector = vec;
-        decision.estimated_latency_ms = (selected->latency_ema.load() / 1e6) * (1.0 / density_factor);
-        decision.estimated_stability_score = selected->trust_score.consistency_score * avg_trust;
-    }
+    decision.is_valid = true;
+    decision.destination_peer = best.peer->signature;
+    decision.selected_vector = best.vector;
+    decision.estimated_latency_ms = best.latency_ms;
+    decision.estimated_stability_score = best.trust;
+    decision.mode_used = mode;
 
     return decision;
 }
 
 void RoutingEngine::propagate_state(const wave_native::core::WaveState& local_state, const std::vector<double>& current_stream) {
+    // Left as legacy wrapper if still used directly
+    RouteDecision decision = compute_route(local_state, RoutingMode::BALANCED);
+    propagate_route(local_state, current_stream, decision);
+}
+
+void RoutingEngine::propagate_route(const wave_native::core::WaveState& local_state, const std::vector<double>& current_stream, const RouteDecision& decision) {
     std::lock_guard<std::mutex> lock(map_mutex_);
     last_state_ = local_state;
 
-    std::vector<std::pair<double, KnownPeer>> sorted_peers;
-    for (const auto& [signature, peer] : mesh_map_) {
-        double d_WNP = calculate_hybrid_distance(peer, local_state);
-        if (d_WNP < 1.0) {
-            sorted_peers.emplace_back(d_WNP, peer);
-        }
+    if (!decision.is_valid || !decision.destination_peer.has_value()) {
+        return;
     }
 
-    std::sort(sorted_peers.begin(), sorted_peers.end(),
-              [](const auto& a, const auto& b) { return a.first < b.first; });
+    if (decision.selected_vector == TransportVector::VectorB_Transduction && transduction_allowed_) {
+        // Attempt to map continuous wave-state to discrete IAT
+        // Here delta_theta is derived from current state derivative for simplicity
+        double delta_theta = local_state.x_dot * 0.01; // Example transduction mapping
 
-    // Only propagate to the optimal peer (the one with the lowest d_WNP)
-    if (!sorted_peers.empty()) {
-        const KnownPeer& optimal_peer = sorted_peers.front().second;
-
-        TransportVector vector = select_vector(local_state.omega, optimal_peer);
-
-        if (vector == TransportVector::VectorB_Transduction && transduction_allowed_) {
-            // Attempt to map continuous wave-state to discrete IAT
-            // Here delta_theta is derived from current state derivative for simplicity
-            double delta_theta = local_state.x_dot * 0.01; // Example transduction mapping
-
-            if (!modulate_iat(delta_theta, current_stream)) {
-                // Snap-back triggered, fallback to Vector A
-                std::cout << "[RoutingEngine] Snap-Back triggered for peer. Re-routing via Vector A.\n";
-            }
-        } else {
-            // Simulate Vector A direct broadcast
-            // std::cout << "[RoutingEngine] Propagating via Vector A to peer.\n";
+        if (!modulate_iat(delta_theta, current_stream)) {
+            // Snap-back triggered, fallback to Vector A
+            std::cout << "[RoutingEngine] Snap-Back triggered for peer. Re-routing via Vector A.\n";
         }
+    } else {
+        // Simulate Vector A direct broadcast
+        // std::cout << "[RoutingEngine] Propagating via Vector A to peer.\n";
     }
 }
 
