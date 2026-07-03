@@ -21,7 +21,30 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(ailee_trust_layer)
 
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 add_subdirectory(simulations)
+
+add_library(wnn_core
+    src/space_segment/PhaseCoherenceAnchor.cpp
+    src/infrastructure_segment/BareMetalEngine.cpp
+    src/sync_membrane/SyncMembrane.cpp
+)
+
+add_executable(wnn_vehicle_demo
+    examples/wnn_vehicle_demo.cpp
+)
+
+target_link_libraries(wnn_vehicle_demo
+    PRIVATE
+        wnn_core
+        nlohmann_json::nlohmann_json
+)
 
 add_executable(wavefrontd
     src/wavefrontd.cpp
@@ -41,4 +64,12 @@ target_link_libraries(wavefrontd
     m
     atomic
     Threads::Threads
+)
+
+target_link_libraries(wnn_core
+    PRIVATE
+        nlohmann_json::nlohmann_json
+        m
+        atomic
+        Threads::Threads
 )
