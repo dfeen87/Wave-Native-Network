@@ -92,6 +92,9 @@ public:
     // Main entry point for propagating the state to all known peers
     void propagate_state(const wave_native::core::WaveState& local_state, const std::vector<double>& current_stream);
 
+    // Propagate state explicitly using a computed RouteDecision
+    void propagate_route(const wave_native::core::WaveState& local_state, const std::vector<double>& current_stream, const RouteDecision& decision);
+
     // Multi-hop routing: Refracts an incoming state intended for Vector B
     void refract_wavefront(const wave_native::core::WaveState& state_in,
                            const wave_native::core::WaveState& state_out,

@@ -247,8 +247,28 @@ int main(int argc, char** argv) {
 
             shared_ts.store(state.ts);
 
-            // Propagate Wave-State through Adaptive Mesh
-            router.propagate_state(state, stream);
+            // Calculate variables for adaptive routing mode selection
+            double drift_ppm = std::abs(pll.get_phase_error()) * 1e6; // simple approximation
+            double avg_trust = trust_score; // derived from verifier.get_physical_integrity_score()
+            // rough estimation of mesh density (max 100 for normalization)
+            double mesh_density = std::clamp(static_cast<double>(peer_table.get_peer_count()) / 100.0, 0.0, 1.0);
+
+            router.set_mesh_density(mesh_density);
+
+            // Pass anchor trust logic to router, wrapping single global trust as example
+            std::vector<double> current_trusts = {avg_trust};
+            router.set_anchor_trust_scores(current_trusts);
+
+            core::RoutingMode current_mode = core::RoutingMode::BALANCED;
+            if (drift_ppm > 50.0 || avg_trust < 0.4 || mesh_density < 0.3) {
+                current_mode = core::RoutingMode::HIGH_STABILITY;
+            } else if (drift_ppm < 10.0 && avg_trust > 0.7 && mesh_density > 0.6) {
+                current_mode = core::RoutingMode::LOW_LATENCY;
+            }
+
+            // Propagate Wave-State through Adaptive Mesh Route Decision
+            core::RouteDecision route_decision = router.compute_route(state, current_mode);
+            router.propagate_route(state, stream, route_decision);
 
             tick_count++;
             last_tick = start_time + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(tick_count * dt));
