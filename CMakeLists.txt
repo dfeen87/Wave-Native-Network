@@ -1,3 +1,4 @@
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 cmake_minimum_required(VERSION 3.10)
 project(WaveNativeProxy)
 
@@ -99,9 +100,6 @@ add_executable(wavefrontd
     src/pll_controller.cpp
     src/routing_engine.cpp
     src/safety_guardrails.cpp
-    mesh_legacy/mesh_discovery.cpp
-    mesh_legacy/peer_routing.cpp
-    mesh_legacy/zk_verifier.cpp
 )
 
 target_link_libraries(wavefrontd
