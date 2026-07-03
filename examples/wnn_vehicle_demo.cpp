@@ -25,7 +25,7 @@ void run_demo() {
     double base_omega = config["space_segment"]["phase_anchors"][0]["base_omega"];
     double rel_comp = config["space_segment"]["phase_anchors"][0]["relativistic_comp_factor"];
     wnn::space::PhaseAnchorConfig anchor_cfg{base_omega, rel_comp};
-    wnn::space::PhaseCoherenceAnchor anchor(anchor_cfg);
+    wnn::space::PhaseCoherenceAnchor anchor(1 /* id */, anchor_cfg);
 
     // Simulate LEO satellite at 17,000 mph (~ 7598 m/s)
     wnn::space::OrbitalState leo_state{500.0, 7598.0, 97.5, 0.0};

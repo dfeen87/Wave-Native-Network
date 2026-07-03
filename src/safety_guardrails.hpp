@@ -11,6 +11,7 @@
 #include "pll_controller.hpp"
 #include "wave_state.hpp"
 #include "config/wnn_config.hpp"
+#include "space_segment/PhaseCoherenceAnchor.hpp"
 
 #include <chrono>
 
@@ -21,6 +22,7 @@ enum class SafetyIncidentType {
     GoDarkActivated,
     TrustThresholdBreach,
     CoherenceFailure,
+    CoherenceClusterUnstable,
     Unknown
 };
 
@@ -49,6 +51,8 @@ public:
 
     SafetyReport generate_report() const;
     void record_incident(SafetyIncidentType type, const std::string& description);
+
+    void report_unstable_cluster(const wnn::space::CoherenceCluster& cluster);
 
 private:
     RoutingEngine* routing_engine_;

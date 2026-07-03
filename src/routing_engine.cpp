@@ -135,6 +135,11 @@ void RoutingEngine::refract_wavefront(const wave_native::core::WaveState& state_
     state_out.omega += (state_in.omega - state_out.omega) * 0.05;
 }
 
+void RoutingEngine::set_coherence_clusters(const std::vector<wnn::space::CoherenceCluster>& clusters) {
+    std::lock_guard<std::mutex> lock(map_mutex_);
+    coherence_clusters_ = clusters;
+}
+
 RouteDecision RoutingEngine::compute_route(const wave_native::core::WaveState& state, RoutingMode mode) {
     std::lock_guard<std::mutex> lock(map_mutex_);
 
@@ -156,6 +161,32 @@ RouteDecision RoutingEngine::compute_route(const wave_native::core::WaveState& s
         double sum = 0.0;
         for (double t : anchor_trust_scores_) sum += t;
         avg_anchor_trust = sum / anchor_trust_scores_.size();
+    }
+
+    // Incorporate cluster awareness
+    double cluster_trust_boost = 1.0;
+    if (!coherence_clusters_.empty()) {
+        // Average trust of stable clusters, penalize if unstable clusters exist
+        double stable_trust_sum = 0.0;
+        std::size_t stable_count = 0;
+        bool has_unstable = false;
+
+        for (const auto& cluster : coherence_clusters_) {
+            if (cluster.is_stable) {
+                stable_trust_sum += cluster.average_trust_score;
+                stable_count++;
+            } else {
+                has_unstable = true;
+            }
+        }
+
+        if (stable_count > 0) {
+            cluster_trust_boost = stable_trust_sum / stable_count;
+        }
+
+        if (has_unstable) {
+            cluster_trust_boost *= 0.8; // Penalize routes if there's instability in the coherence anchor mesh
+        }
     }
 
     struct CandidateScore {
@@ -184,7 +215,7 @@ RouteDecision RoutingEngine::compute_route(const wave_native::core::WaveState& s
             // Adjust trust slightly based on vector choice and average anchor trust
             double trust = peer.trust_score.consistency_score;
             if (vec == TransportVector::VectorB_Transduction) {
-                trust = trust * avg_anchor_trust;
+                trust = trust * avg_anchor_trust * cluster_trust_boost;
             }
 
             // Normalization
