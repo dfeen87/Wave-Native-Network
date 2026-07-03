@@ -7,7 +7,7 @@ namespace core {
 
 class PllController {
 public:
-    PllController(double omega_base);
+    PllController(double omega_base, double lock_time_ms = 100.0, double overshoot_deg = 5.0, double settling_time_ms = 50.0);
 
     // Update the PLL loop with a new batch of amplitude samples from the PHY listener
     // and the current local phase (theta_local)
@@ -16,12 +16,18 @@ public:
 
     bool is_locked() const;
     double get_phase_error() const;
+    double compute_phase_error() const;
 
     bool is_replay_detected() const { return is_replay_detected_; }
     void clear_replay_flag() { is_replay_detected_ = false; }
 
     // Trigger a manual reset (e.g., quarantine)
     void reset();
+
+    void enable_diagnostics(bool enabled) { diagnostics_enabled_ = enabled; }
+    void set_lock_time_ms(double ms) { lock_time_ms_ = ms; }
+    void set_overshoot_deg(double deg) { overshoot_deg_ = deg; }
+    void set_settling_time_ms(double ms) { settling_time_ms_ = ms; }
 
     // AILEE Guardrails
     void freeze_integral() {
@@ -62,6 +68,12 @@ private:
 
     bool integral_frozen_ = false;
     bool is_replay_detected_ = false;
+
+    // Stability modeling parameters
+    double lock_time_ms_;
+    double overshoot_deg_;
+    double settling_time_ms_;
+    bool diagnostics_enabled_ = false;
 };
 
 } // namespace core

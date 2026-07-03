@@ -7,7 +7,7 @@
 namespace wave_native {
 namespace core {
 
-PllController::PllController(double omega_base)
+PllController::PllController(double omega_base, double lock_time_ms, double overshoot_deg, double settling_time_ms)
     : omega_base_(omega_base),
       integral_accumulator_(0.0),
       is_locked_(false),
@@ -16,7 +16,10 @@ PllController::PllController(double omega_base)
       current_time_(0.0),
       delta_theta_(0.0),
       last_amp_(0.0),
-      was_increasing_(true) {
+      was_increasing_(true),
+      lock_time_ms_(lock_time_ms),
+      overshoot_deg_(overshoot_deg),
+      settling_time_ms_(settling_time_ms) {
 }
 
 double PllController::step(const std::vector<double>& stream, double theta_local, long double dt, long double ts) {
@@ -91,8 +94,26 @@ double PllController::step(const std::vector<double>& stream, double theta_local
         }
     }
 
+    // Physical modeling of overshoot and settling time
+    // If not locked, or just locked, apply a simulated overshoot perturbation
+    double physical_perturbation = 0.0;
+    if (lock_counter_ > 0 && lock_counter_ < lock_threshold_ * 2) {
+        // Simulating an underdamped settling characteristic
+        double t_ms = (lock_counter_ * dt * 1000.0);
+        if (t_ms < settling_time_ms_) {
+            double damping_factor = std::exp(-t_ms / (settling_time_ms_ / 3.0));
+            double oscillation = std::sin(2.0 * M_PI * t_ms / lock_time_ms_);
+            double overshoot_rad = overshoot_deg_ * (M_PI / 180.0);
+            physical_perturbation = overshoot_rad * damping_factor * oscillation;
+        }
+    }
+
     // PI control output
-    double omega_corrected = omega_active + (K_p_ * delta_theta_) + (K_i_ * integral_accumulator_);
+    double omega_corrected = omega_active + (K_p_ * delta_theta_) + (K_i_ * integral_accumulator_) + physical_perturbation;
+
+    if (diagnostics_enabled_) {
+        std::cout << "[PLL Diagnostics] dt=" << dt << " err=" << delta_theta_ << " corr=" << omega_corrected << " locked=" << is_locked_ << "\n";
+    }
 
     return omega_corrected;
 }
@@ -102,6 +123,10 @@ bool PllController::is_locked() const {
 }
 
 double PllController::get_phase_error() const {
+    return delta_theta_;
+}
+
+double PllController::compute_phase_error() const {
     return delta_theta_;
 }
 

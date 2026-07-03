@@ -1,6 +1,11 @@
 #ifndef WNN_SPACE_SEGMENT_PHASE_COHERENCE_ANCHOR_HPP
 #define WNN_SPACE_SEGMENT_PHASE_COHERENCE_ANCHOR_HPP
 
+#include <vector>
+#include <cmath>
+#include <cstdint>
+#include <algorithm>
+
 namespace wnn {
 namespace space {
 
@@ -29,8 +34,24 @@ public:
     PhaseAnchorSignal compute_signal(const OrbitalState& state) const;
     void apply_relativistic_tuning(const OrbitalState& state, PhaseAnchorSignal& sig) const;
 
+    double compute_trust_score() const;
+    bool verify_orthogonal_handshake(const struct AnchorLink& link);
+
+    // Test mutators to adjust internal state
+    void record_handshake_success(bool success);
+    void record_coherence_failure();
+    void update_phase_stability(double stability);
+
+    double get_phase_stability_score() const { return phase_stability_score_; }
+
 private:
     PhaseAnchorConfig config_;
+
+    // Internal metrics for trust score
+    double phase_stability_score_ = 1.0;
+    std::uint32_t successful_handshakes_ = 0;
+    std::uint32_t total_handshakes_ = 0;
+    std::uint32_t coherence_failures_ = 0;
 };
 
 struct AnchorLink {
@@ -40,7 +61,13 @@ struct AnchorLink {
     bool orthogonal_verified;
 };
 
-bool verify_orthogonal_handshake(const AnchorLink& link);
+struct CoherenceCluster {
+    std::vector<PhaseCoherenceAnchor*> anchors;
+    double cluster_coherence_score;
+    double average_phase_deg;
+};
+
+std::vector<CoherenceCluster> build_coherence_clusters(std::vector<PhaseCoherenceAnchor>& anchors);
 
 } // namespace space
 } // namespace wnn

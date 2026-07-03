@@ -76,6 +76,7 @@ void SafetyGuardrails::process_iat_samples(const std::vector<double>& iats) {
     if (safety_mode_ != SafetyMode::OFF && !go_dark_active_.load(std::memory_order_acquire) && current_safety_score_ < s_crit_) {
         // Initiate hardware lockdown
         go_dark_active_.store(true, std::memory_order_release);
+        record_incident(SafetyIncidentType::GoDarkActivated, "Carrier opacity detected, entered stealth");
         
         // Strict fence to ensure flush guarantees propagate to all cores
         std::atomic_thread_fence(std::memory_order_seq_cst);
@@ -110,6 +111,27 @@ void SafetyGuardrails::process_iat_samples(const std::vector<double>& iats) {
             }
         }
     }
+}
+
+void SafetyGuardrails::record_incident(SafetyIncidentType type, const std::string& description) {
+    SafetyIncident incident;
+    incident.timestamp = std::chrono::steady_clock::now();
+    incident.type = type;
+    incident.description = description;
+
+    recent_incidents_.push_back(incident);
+    if (recent_incidents_.size() > 100) {
+        recent_incidents_.pop_front();
+    }
+}
+
+SafetyReport SafetyGuardrails::generate_report() const {
+    SafetyReport report;
+    report.recent_incidents = std::vector<SafetyIncident>(recent_incidents_.begin(), recent_incidents_.end());
+    report.trust_score_threshold = trust_score_threshold_;
+    report.coherence_failure_threshold = coherence_failure_threshold_;
+    report.go_dark_active = go_dark_active_.load(std::memory_order_acquire);
+    return report;
 }
 
 } // namespace core

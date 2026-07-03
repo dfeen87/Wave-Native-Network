@@ -9,6 +9,7 @@
 #include <thread>
 #include <iostream>
 #include <atomic>
+#include <optional>
 
 #include "../mesh_legacy/zk_verifier.hpp"
 #include "wave_state.hpp"
@@ -20,6 +21,21 @@ namespace core {
 enum class TransportVector {
     VectorA_Resonant,
     VectorB_Transduction
+};
+
+enum class RoutingMode {
+    LOW_LATENCY,
+    HIGH_STABILITY,
+    BALANCED
+};
+
+struct RouteDecision {
+    TransportVector selected_vector;
+    std::optional<std::vector<uint8_t>> destination_peer;
+    RoutingMode mode_used;
+    double estimated_latency_ms;
+    double estimated_stability_score;
+    bool is_valid;
 };
 
 struct HybridWeights {
@@ -81,6 +97,34 @@ public:
                            const wave_native::core::WaveState& state_out,
                            const std::vector<double>& current_stream);
 
+    /**
+     * @brief Refracts an incoming wavefront to an outgoing state.
+     * @param state_in The incoming wave state.
+     * @param state_out The outgoing wave state to be updated.
+     */
+    void refract_wavefront(const wave_native::core::WaveState& state_in,
+                           wave_native::core::WaveState& state_out);
+
+    /**
+     * @brief Computes a route decision based on a wave state and routing mode.
+     * @param state The target wave state.
+     * @param mode The desired routing mode.
+     * @return A route decision detailing the path.
+     */
+    RouteDecision compute_route(const wave_native::core::WaveState& state, RoutingMode mode);
+
+    /**
+     * @brief Sets the internal mesh density.
+     * @param density The mesh density to set.
+     */
+    void set_mesh_density(double density) { mesh_density_ = density; }
+
+    /**
+     * @brief Sets the trust scores for Phase Coherence Anchors.
+     * @param scores The trust scores to set.
+     */
+    void set_anchor_trust_scores(const std::vector<double>& scores) { anchor_trust_scores_ = scores; }
+
     // AILEE Guardrails
     void set_transduction_allowed(bool allowed) { transduction_allowed_ = allowed; }
     void flush_transduction_queue() {
@@ -113,6 +157,8 @@ private:
     const double K_iat = 1000000.0; // Nanoseconds per radian
 
     bool transduction_allowed_ = true;
+    double mesh_density_ = 0.0;
+    std::vector<double> anchor_trust_scores_;
 };
 
 } // namespace core

@@ -41,9 +41,62 @@ void PhaseCoherenceAnchor::apply_relativistic_tuning(
     sig.phase += omega_doppler * state.timestamp;
 }
 
-// Free function — matches header exactly
-bool verify_orthogonal_handshake(const AnchorLink& link) {
-    return std::fabs(link.angle_deg - 90.0) <= 5.0;
+bool PhaseCoherenceAnchor::verify_orthogonal_handshake(const AnchorLink& link) {
+    bool is_orthogonal = std::fabs(link.angle_deg - 90.0) <= 5.0;
+    record_handshake_success(is_orthogonal);
+    return is_orthogonal;
+}
+
+void PhaseCoherenceAnchor::record_handshake_success(bool success) {
+    total_handshakes_++;
+    if (success) {
+        successful_handshakes_++;
+    }
+}
+
+void PhaseCoherenceAnchor::record_coherence_failure() {
+    coherence_failures_++;
+}
+
+void PhaseCoherenceAnchor::update_phase_stability(double stability) {
+    // Expected stability in [0, 1] range
+    phase_stability_score_ = std::clamp(stability, 0.0, 1.0);
+}
+
+double PhaseCoherenceAnchor::compute_trust_score() const {
+    double handshake_success_rate = total_handshakes_ > 0 ? static_cast<double>(successful_handshakes_) / total_handshakes_ : 1.0;
+
+    // Penalize score by coherence failures, using an exponential decay model
+    double failure_penalty = std::exp(-0.1 * coherence_failures_);
+
+    // Combine phase stability, handshake success rate, and failure penalty
+    return 0.4 * phase_stability_score_ + 0.4 * handshake_success_rate + 0.2 * failure_penalty;
+}
+
+std::vector<CoherenceCluster> build_coherence_clusters(std::vector<PhaseCoherenceAnchor>& anchors) {
+    std::vector<CoherenceCluster> clusters;
+
+    // Very simple clustering: group anchors with high trust scores together
+    CoherenceCluster main_cluster;
+    main_cluster.cluster_coherence_score = 0.0;
+    main_cluster.average_phase_deg = 0.0;
+
+    double total_score = 0.0;
+    for (auto& anchor : anchors) {
+        if (anchor.compute_trust_score() > 0.6) {
+            main_cluster.anchors.push_back(&anchor);
+            total_score += anchor.compute_trust_score();
+            // Placeholder for real phase math:
+            main_cluster.average_phase_deg += 0.0;
+        }
+    }
+
+    if (!main_cluster.anchors.empty()) {
+        main_cluster.cluster_coherence_score = total_score / main_cluster.anchors.size();
+        clusters.push_back(main_cluster);
+    }
+
+    return clusters;
 }
 
 } // namespace space

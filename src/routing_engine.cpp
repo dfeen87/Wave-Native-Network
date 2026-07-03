@@ -126,6 +126,92 @@ void RoutingEngine::refract_wavefront(const wave_native::core::WaveState& state_
     }
 }
 
+void RoutingEngine::refract_wavefront(const wave_native::core::WaveState& state_in,
+                                      wave_native::core::WaveState& state_out) {
+    // Apply a simple refraction logic modifying the outgoing state
+    // based on incoming phase.
+    double phase_shift = state_in.theta * 0.1;
+    state_out.theta += phase_shift;
+    state_out.omega += (state_in.omega - state_out.omega) * 0.05;
+}
+
+RouteDecision RoutingEngine::compute_route(const wave_native::core::WaveState& state, RoutingMode mode) {
+    std::lock_guard<std::mutex> lock(map_mutex_);
+
+    RouteDecision decision;
+    decision.mode_used = mode;
+    decision.is_valid = false;
+    decision.estimated_latency_ms = 9999.0;
+    decision.estimated_stability_score = 0.0;
+
+    // Simple heuristic incorporating mesh density and anchor trust
+    double density_factor = std::clamp(mesh_density_, 0.1, 1.0);
+    double avg_trust = 1.0;
+
+    if (!anchor_trust_scores_.empty()) {
+        double sum = 0.0;
+        for (double t : anchor_trust_scores_) sum += t;
+        avg_trust = sum / anchor_trust_scores_.size();
+    }
+
+    std::vector<std::pair<double, KnownPeer>> candidates;
+    for (const auto& [signature, peer] : mesh_map_) {
+        double dist = calculate_hybrid_distance(peer, state);
+        if (dist < 1.0) {
+            candidates.emplace_back(dist, peer);
+        }
+    }
+
+    if (candidates.empty()) {
+        return decision;
+    }
+
+    std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
+        return a.first < b.first;
+    });
+
+    // Choose the best peer based on mode
+    const KnownPeer* selected = nullptr;
+
+    if (mode == RoutingMode::LOW_LATENCY) {
+        // Sort by latency
+        std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
+            return a.second.latency_ema.load() < b.second.latency_ema.load();
+        });
+        selected = &candidates.front().second;
+    } else if (mode == RoutingMode::HIGH_STABILITY) {
+        // Sort by trust score and inverse jitter
+        std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
+            double score_a = a.second.trust_score.consistency_score / (a.second.jitter_ema.load() + 1.0);
+            double score_b = b.second.trust_score.consistency_score / (b.second.jitter_ema.load() + 1.0);
+            return score_a > score_b;
+        });
+        selected = &candidates.front().second;
+    } else {
+        // BALANCED: use the already sorted by hybrid distance
+        selected = &candidates.front().second;
+    }
+
+    if (selected) {
+        decision.is_valid = true;
+        decision.destination_peer = selected->signature;
+
+        TransportVector vec = select_vector(state.omega, *selected);
+
+        // Adjust vector preference based on anchor trust
+        if (vec == TransportVector::VectorB_Transduction && avg_trust < 0.5) {
+            // If anchors are untrusted, prefer resonant
+            vec = TransportVector::VectorA_Resonant;
+        }
+
+        decision.selected_vector = vec;
+        decision.estimated_latency_ms = (selected->latency_ema.load() / 1e6) * (1.0 / density_factor);
+        decision.estimated_stability_score = selected->trust_score.consistency_score * avg_trust;
+    }
+
+    return decision;
+}
+
 void RoutingEngine::propagate_state(const wave_native::core::WaveState& local_state, const std::vector<double>& current_stream) {
     std::lock_guard<std::mutex> lock(map_mutex_);
     last_state_ = local_state;
