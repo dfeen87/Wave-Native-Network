@@ -1,0 +1,26 @@
+{
+    "space_segment": {
+        "phase_anchors": [
+            {
+                "id": "leo-alpha-1",
+                "base_omega": 1000000.0,
+                "relativistic_comp_factor": 1.0000000005
+            },
+            {
+                "id": "leo-beta-2",
+                "base_omega": 1000000.0,
+                "relativistic_comp_factor": 1.0000000005
+            }
+        ]
+    },
+    "infrastructure_segment": {
+        "handoff_continuity_threshold": 0.950
+    },
+    "sync_membrane": {
+        "safety_mode": "strict",
+        "phase_shimmer_tolerance": {
+            "max_latency_ms": 50.0,
+            "max_phase_variation": 0.2
+        }
+    }
+}
