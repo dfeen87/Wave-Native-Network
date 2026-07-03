@@ -1,0 +1,64 @@
+name: WNN CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y \
+          cmake \
+          ninja-build \
+          clang \
+          clang-tidy \
+          cppcheck \
+          jq
+
+    - name: Configure CMake
+      run: |
+        cmake -S . -B build \
+          -DCMAKE_CXX_COMPILER=clang++ \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+    - name: Build WNN Core
+      run: cmake --build build --target wnn_core
+
+    - name: Build Demo
+      run: cmake --build build --target wnn_vehicle_demo
+
+    - name: Run Static Analysis (clang-tidy)
+      run: clang-tidy -p build $(find src -name '*.cpp')
+
+    - name: Run cppcheck
+      run: cppcheck --enable=all --std=c++20 --error-exitcode=1 src/
+
+    - name: Validate JSON Config
+      run: jq empty wnn_config.json
+
+    - name: Run Tests (if present)
+      run: |
+        if [ -d "build/tests" ]; then
+          ctest --test-dir build
+        else
+          echo "No tests found."
+        fi
+
+    - name: Check Formatting
+      run: |
+        if [ -f ".clang-format" ]; then
+          clang-format --dry-run --Werror $(find src -name '*.hpp' -o -name '*.cpp')
+        else
+          echo "No .clang-format file found."
+        fi
