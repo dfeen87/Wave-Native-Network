@@ -14,6 +14,7 @@
 #include "routing_engine.hpp"
 #include "safety_guardrails.hpp"
 #include "config/wnn_config.hpp"
+#include "distributed_pll/distributed_pll_controller.hpp"
 #include <string.h>
 #include <condition_variable>
 
@@ -95,12 +96,21 @@ int main(int argc, char** argv) {
     // Initialize Routing Engine
     core::RoutingEngine router(&phy);
 
+    // Initialize Distributed PLL Controller
+    core::DistributedPllController distributed_pll(
+        config.pll_global_lock_tolerance_deg,
+        config.pll_global_settling_tolerance_ms
+    );
+
     // Initialize Safety Guardrails
     core::SafetyGuardrails safety_guardrails(&router, &pll, &duffing, config.safety_mode);
 
     // Initialize Resonant Peer Table and Spectral Monitor
     mesh_legacy::ResonantPeerTable peer_table;
     mesh_legacy::AdaptiveSpectralMonitor spectral_monitor;
+
+    // Initialize Space Segment Coherence Engine
+    wnn::space::CoherenceEngine coherence_engine(config);
 
     std::mutex stream_mutex;
     std::condition_variable stream_cv;
@@ -219,6 +229,21 @@ int main(int argc, char** argv) {
 
                     // Add to routing engine
                     router.add_or_update_peer(mock_sig, state.omega, mock_score, state.theta, iat_stream);
+
+                    // Dynamically map peers to Space Segment Coherence Engine for tracking phase errors
+                    // Derive a pseudo anchor ID from the first 4 bytes of the signature for the sake of integration
+                    if (mock_sig.size() >= 4) {
+                        uint32_t pseudo_anchor_id = (mock_sig[0] << 24) | (mock_sig[1] << 16) | (mock_sig[2] << 8) | mock_sig[3];
+
+                        if (coherence_engine.has_anchor(pseudo_anchor_id)) {
+                            coherence_engine.update_anchor_stability(pseudo_anchor_id, psi_snr > 0 ? 1.0 : 0.0);
+                        } else {
+                            wnn::space::PhaseAnchorConfig anchor_cfg{state.omega, 1.0};
+                            wnn::space::PhaseCoherenceAnchor anchor(pseudo_anchor_id, anchor_cfg);
+                            anchor.update_phase_stability(psi_snr > 0 ? 1.0 : 0.0);
+                            coherence_engine.add_anchor(anchor);
+                        }
+                    }
                 }
             }
 
@@ -254,6 +279,40 @@ int main(int argc, char** argv) {
             double mesh_density = std::clamp(static_cast<double>(peer_table.get_peer_count()) / 100.0, 0.0, 1.0);
 
             router.set_mesh_density(mesh_density);
+
+            // Real integration with Space Segment / CoherenceEngine
+            auto clusters = coherence_engine.build_coherence_clusters();
+            router.set_coherence_clusters(clusters);
+
+            std::vector<wave_native::core::AnchorId> active_anchors;
+            for (const auto& cluster : clusters) {
+                active_anchors.insert(active_anchors.end(), cluster.anchors.begin(), cluster.anchors.end());
+            }
+
+            // Sync anchor IDs to distributed PLL
+            distributed_pll.set_nodes(active_anchors);
+
+            // Update phase error from the clusters (assigning cluster average phase error to its anchors for now)
+            // In a fully integrated system, phase errors would be extracted per-anchor during handshake
+            // Here, we feed the cluster's average phase degree back into the tracking loop
+            for (const auto& cluster : clusters) {
+                for (auto anchor_id : cluster.anchors) {
+                    distributed_pll.update_phase_error(anchor_id, cluster.average_phase_deg, state.ts * 1000.0);
+                }
+            }
+
+            // Step the Distributed PLL
+            distributed_pll.step(state.ts * 1000.0);
+
+            // Feed PLL state to routing engine and safety guardrails
+            router.set_pll_node_states(distributed_pll.node_states());
+            router.set_network_pll_locked(distributed_pll.is_network_locked());
+
+            safety_guardrails.update_pll_network_state(
+                distributed_pll.is_network_locked(),
+                state.ts * 1000.0,
+                config.pll_unstable_incident_threshold_ms
+            );
 
             // Pass anchor trust logic to router, wrapping single global trust as example
             std::vector<double> current_trusts = {avg_trust};

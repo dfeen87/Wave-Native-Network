@@ -23,6 +23,7 @@ enum class SafetyIncidentType {
     TrustThresholdBreach,
     CoherenceFailure,
     CoherenceClusterUnstable,
+    PllNetworkUnstable,
     Unknown
 };
 
@@ -53,6 +54,7 @@ public:
     void record_incident(SafetyIncidentType type, const std::string& description);
 
     void report_unstable_cluster(const wnn::space::CoherenceCluster& cluster);
+    void update_pll_network_state(bool locked, double timestamp_ms, double pll_unstable_incident_threshold_ms);
 
 private:
     RoutingEngine* routing_engine_;
@@ -78,6 +80,10 @@ private:
     double trust_score_threshold_ = 0.5;
     double coherence_failure_threshold_ = 5.0;
     std::deque<SafetyIncident> recent_incidents_;
+
+    // Distributed PLL Safety State
+    bool last_pll_locked_ = true;
+    double pll_unstable_start_ms_ = 0.0;
 };
 
 } // namespace core

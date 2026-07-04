@@ -54,6 +54,7 @@ file(GLOB_RECURSE WNN_CORE_SOURCES
     "${CMAKE_SOURCE_DIR}/src/space_segment/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/infrastructure_segment/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/sync_membrane/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/distributed_pll/*.cpp"
 )
 
 message(STATUS "WNN_CORE_SOURCES = ${WNN_CORE_SOURCES}")
@@ -111,6 +112,7 @@ add_executable(wavefrontd
 
 target_link_libraries(wavefrontd
     PRIVATE
+        wnn_core
         pcap
         m
         atomic

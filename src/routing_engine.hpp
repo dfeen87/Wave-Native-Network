@@ -15,6 +15,7 @@
 #include "wave_state.hpp"
 #include "interceptor/phy_listener.hpp"
 #include "space_segment/PhaseCoherenceAnchor.hpp"
+#include "distributed_pll/distributed_pll_controller.hpp"
 
 namespace wave_native {
 namespace core {
@@ -135,6 +136,10 @@ public:
      */
     void set_coherence_clusters(const std::vector<wnn::space::CoherenceCluster>& clusters);
 
+    // PLL Distributed Awareness
+    void set_pll_node_states(const std::vector<wave_native::core::PllNodeState>& states);
+    void set_network_pll_locked(bool locked);
+
     // AILEE Guardrails
     void set_transduction_allowed(bool allowed) { transduction_allowed_ = allowed; }
     void flush_transduction_queue() {
@@ -170,6 +175,9 @@ private:
     double mesh_density_ = 0.0;
     std::vector<double> anchor_trust_scores_;
     std::vector<wnn::space::CoherenceCluster> coherence_clusters_;
+
+    std::vector<wave_native::core::PllNodeState> pll_states_;
+    bool network_pll_locked_ = true;
 };
 
 } // namespace core

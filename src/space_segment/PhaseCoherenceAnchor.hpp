@@ -81,6 +81,9 @@ public:
 
     void add_anchor(const PhaseCoherenceAnchor& anchor);
 
+    bool has_anchor(AnchorId anchor_id) const;
+    void update_anchor_stability(AnchorId anchor_id, double stability);
+
     std::vector<CoherenceCluster> build_coherence_clusters() const;
     double compute_trust_score(AnchorId anchor_id) const;
     double compute_multi_anchor_trust(const std::vector<AnchorId>& anchor_ids) const;

@@ -144,5 +144,25 @@ void SafetyGuardrails::report_unstable_cluster(const wnn::space::CoherenceCluste
     }
 }
 
+void SafetyGuardrails::update_pll_network_state(bool locked, double timestamp_ms, double pll_unstable_incident_threshold_ms) {
+    if (!locked && last_pll_locked_) {
+        // Just became unlocked
+        pll_unstable_start_ms_ = timestamp_ms;
+    } else if (!locked && !last_pll_locked_) {
+        // Sustained unlock, check threshold
+        if ((timestamp_ms - pll_unstable_start_ms_) > pll_unstable_incident_threshold_ms) {
+            std::string desc = "Distributed PLL network unstable for over " + std::to_string(pll_unstable_incident_threshold_ms) + " ms";
+            record_incident(SafetyIncidentType::PllNetworkUnstable, desc);
+            // Reset start time so we don't spam incidents every tick, or we could leave it
+            // For now, reset it so it warns again after another threshold duration
+            pll_unstable_start_ms_ = timestamp_ms;
+        }
+    } else if (locked) {
+        // Locked
+        pll_unstable_start_ms_ = 0.0;
+    }
+    last_pll_locked_ = locked;
+}
+
 } // namespace core
 } // namespace wave_native
