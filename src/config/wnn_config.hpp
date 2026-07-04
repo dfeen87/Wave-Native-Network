@@ -27,6 +27,11 @@ struct WnnConfig {
     double coherence_trust_threshold = 0.6;
     std::size_t coherence_min_cluster_size = 2;
 
+    // Distributed PLL thresholds
+    double pll_global_lock_tolerance_deg = 5.0;
+    double pll_global_settling_tolerance_ms = 50.0;
+    double pll_unstable_incident_threshold_ms = 1000.0;
+
     static WnnConfig parse(int argc, char** argv) {
         WnnConfig config;
 

@@ -140,6 +140,16 @@ void RoutingEngine::set_coherence_clusters(const std::vector<wnn::space::Coheren
     coherence_clusters_ = clusters;
 }
 
+void RoutingEngine::set_pll_node_states(const std::vector<wave_native::core::PllNodeState>& states) {
+    std::lock_guard<std::mutex> lock(map_mutex_);
+    pll_states_ = states;
+}
+
+void RoutingEngine::set_network_pll_locked(bool locked) {
+    std::lock_guard<std::mutex> lock(map_mutex_);
+    network_pll_locked_ = locked;
+}
+
 RouteDecision RoutingEngine::compute_route(const wave_native::core::WaveState& state, RoutingMode mode) {
     std::lock_guard<std::mutex> lock(map_mutex_);
 
@@ -186,6 +196,15 @@ RouteDecision RoutingEngine::compute_route(const wave_native::core::WaveState& s
 
         if (has_unstable) {
             cluster_trust_boost *= 0.8; // Penalize routes if there's instability in the coherence anchor mesh
+        }
+    }
+
+    // Heuristic: Use global PLL state to penalize stability
+    if (!network_pll_locked_) {
+        cluster_trust_boost *= 0.8; // Penalize routing score when the distributed PLL is not locked
+        // Optionally bias mode: if we were BALANCED or LOW_LATENCY, we might want to prioritize stability
+        if (mode != RoutingMode::HIGH_STABILITY) {
+            mode = RoutingMode::HIGH_STABILITY;
         }
     }
 

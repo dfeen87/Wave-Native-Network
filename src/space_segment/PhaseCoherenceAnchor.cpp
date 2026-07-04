@@ -80,6 +80,24 @@ void CoherenceEngine::add_anchor(const PhaseCoherenceAnchor& anchor) {
     anchors_.push_back(anchor);
 }
 
+bool CoherenceEngine::has_anchor(AnchorId anchor_id) const {
+    for (const auto& anchor : anchors_) {
+        if (anchor.id() == anchor_id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void CoherenceEngine::update_anchor_stability(AnchorId anchor_id, double stability) {
+    for (auto& anchor : anchors_) {
+        if (anchor.id() == anchor_id) {
+            anchor.update_phase_stability(stability);
+            return;
+        }
+    }
+}
+
 std::vector<CoherenceCluster> CoherenceEngine::build_coherence_clusters() const {
     std::vector<CoherenceCluster> clusters;
 
@@ -113,6 +131,9 @@ std::vector<CoherenceCluster> CoherenceEngine::build_coherence_clusters() const 
 
         // Simulated average phase error
         double average_phase_error = total_phase_error / main_cluster.anchors.size();
+
+        // Feed the simulated average phase error back to the cluster struct so others can track it
+        main_cluster.average_phase_deg = average_phase_error;
 
         main_cluster.is_stable = (average_phase_error < config_.coherence_phase_error_threshold) &&
                                  (main_cluster.average_trust_score > config_.coherence_trust_threshold) &&
