@@ -164,5 +164,24 @@ void SafetyGuardrails::update_pll_network_state(bool locked, double timestamp_ms
     last_pll_locked_ = locked;
 }
 
+void SafetyGuardrails::update_mesh_health(bool healthy, double timestamp_ms, double mesh_health_degraded_threshold_ms) {
+    if (!healthy && last_mesh_healthy_) {
+        // Just became unhealthy
+        mesh_unhealthy_start_ms_ = timestamp_ms;
+    } else if (!healthy && !last_mesh_healthy_) {
+        // Sustained unhealthy state, check threshold
+        if ((timestamp_ms - mesh_unhealthy_start_ms_) > mesh_health_degraded_threshold_ms) {
+            std::string desc = "Mesh health degraded for over " + std::to_string(mesh_health_degraded_threshold_ms) + " ms (low trust, high phase error, or unstable coherence)";
+            record_incident(SafetyIncidentType::MeshHealthDegraded, desc);
+            // Reset to prevent spamming
+            mesh_unhealthy_start_ms_ = timestamp_ms;
+        }
+    } else if (healthy) {
+        // Healthy
+        mesh_unhealthy_start_ms_ = 0.0;
+    }
+    last_mesh_healthy_ = healthy;
+}
+
 } // namespace core
 } // namespace wave_native

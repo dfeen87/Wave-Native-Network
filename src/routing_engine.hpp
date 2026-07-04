@@ -16,6 +16,7 @@
 #include "interceptor/phy_listener.hpp"
 #include "space_segment/PhaseCoherenceAnchor.hpp"
 #include "distributed_pll/distributed_pll_controller.hpp"
+#include "mesh_orchestrator/mesh_orchestrator.hpp"
 
 namespace wave_native {
 namespace core {
@@ -140,6 +141,9 @@ public:
     void set_pll_node_states(const std::vector<wave_native::core::PllNodeState>& states);
     void set_network_pll_locked(bool locked);
 
+    // Mesh Orchestration Integration
+    void set_mesh_orchestrator_state(const MeshOrchestrator& orchestrator);
+
     // AILEE Guardrails
     void set_transduction_allowed(bool allowed) { transduction_allowed_ = allowed; }
     void flush_transduction_queue() {
@@ -178,6 +182,7 @@ private:
 
     std::vector<wave_native::core::PllNodeState> pll_states_;
     bool network_pll_locked_ = true;
+    bool mesh_healthy_ = true;
 };
 
 } // namespace core

@@ -150,6 +150,11 @@ void RoutingEngine::set_network_pll_locked(bool locked) {
     network_pll_locked_ = locked;
 }
 
+void RoutingEngine::set_mesh_orchestrator_state(const MeshOrchestrator& orchestrator) {
+    std::lock_guard<std::mutex> lock(map_mutex_);
+    mesh_healthy_ = orchestrator.is_mesh_healthy();
+}
+
 RouteDecision RoutingEngine::compute_route(const wave_native::core::WaveState& state, RoutingMode mode) {
     std::lock_guard<std::mutex> lock(map_mutex_);
 
@@ -203,6 +208,14 @@ RouteDecision RoutingEngine::compute_route(const wave_native::core::WaveState& s
     if (!network_pll_locked_) {
         cluster_trust_boost *= 0.8; // Penalize routing score when the distributed PLL is not locked
         // Optionally bias mode: if we were BALANCED or LOW_LATENCY, we might want to prioritize stability
+        if (mode != RoutingMode::HIGH_STABILITY) {
+            mode = RoutingMode::HIGH_STABILITY;
+        }
+    }
+
+    // Incorporate Mesh Orchestrator health
+    if (!mesh_healthy_) {
+        cluster_trust_boost *= 0.8; // Additional penalization for overall mesh degradation
         if (mode != RoutingMode::HIGH_STABILITY) {
             mode = RoutingMode::HIGH_STABILITY;
         }

@@ -103,6 +103,16 @@ namespace mesh_legacy {
             return peers_.size();
         }
 
+        std::vector<ResonantPeer> get_all_peers() const {
+            std::shared_lock<std::shared_mutex> lock(mutex_);
+            std::vector<ResonantPeer> all_peers;
+            all_peers.reserve(peers_.size());
+            for (const auto& [sig, peer] : peers_) {
+                all_peers.push_back(peer);
+            }
+            return all_peers;
+        }
+
     private:
         mutable std::shared_mutex mutex_;
         std::map<std::vector<uint8_t>, ResonantPeer> peers_;
