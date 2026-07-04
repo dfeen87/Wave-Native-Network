@@ -32,6 +32,12 @@ struct WnnConfig {
     double pll_global_settling_tolerance_ms = 50.0;
     double pll_unstable_incident_threshold_ms = 1000.0;
 
+    // Mesh Orchestration thresholds
+    double mesh_min_trust_threshold = 0.55;
+    double mesh_max_phase_error_deg = 8.0;
+    double mesh_health_degraded_threshold_ms = 2500.0;
+    double mesh_min_healthy_node_ratio = 0.60;
+
     static WnnConfig parse(int argc, char** argv) {
         WnnConfig config;
 

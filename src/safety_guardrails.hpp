@@ -24,6 +24,7 @@ enum class SafetyIncidentType {
     CoherenceFailure,
     CoherenceClusterUnstable,
     PllNetworkUnstable,
+    MeshHealthDegraded,
     Unknown
 };
 
@@ -55,6 +56,7 @@ public:
 
     void report_unstable_cluster(const wnn::space::CoherenceCluster& cluster);
     void update_pll_network_state(bool locked, double timestamp_ms, double pll_unstable_incident_threshold_ms);
+    void update_mesh_health(bool healthy, double timestamp_ms, double mesh_health_degraded_threshold_ms);
 
 private:
     RoutingEngine* routing_engine_;
@@ -84,6 +86,10 @@ private:
     // Distributed PLL Safety State
     bool last_pll_locked_ = true;
     double pll_unstable_start_ms_ = 0.0;
+
+    // Mesh Health Safety State
+    bool last_mesh_healthy_ = true;
+    double mesh_unhealthy_start_ms_ = 0.0;
 };
 
 } // namespace core

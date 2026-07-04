@@ -15,6 +15,7 @@
 #include "safety_guardrails.hpp"
 #include "config/wnn_config.hpp"
 #include "distributed_pll/distributed_pll_controller.hpp"
+#include "mesh_orchestrator/mesh_orchestrator.hpp"
 #include <string.h>
 #include <condition_variable>
 
@@ -101,6 +102,9 @@ int main(int argc, char** argv) {
         config.pll_global_lock_tolerance_deg,
         config.pll_global_settling_tolerance_ms
     );
+
+    // Initialize Mesh Orchestrator
+    core::MeshOrchestrator orchestrator(config);
 
     // Initialize Safety Guardrails
     core::SafetyGuardrails safety_guardrails(&router, &pll, &duffing, config.safety_mode);
@@ -312,6 +316,61 @@ int main(int argc, char** argv) {
                 distributed_pll.is_network_locked(),
                 state.ts * 1000.0,
                 config.pll_unstable_incident_threshold_ms
+            );
+
+            // Integrate with Mesh Orchestrator
+            std::vector<core::MeshNodeState> mesh_nodes;
+            for (const auto& peer : peer_table.get_all_peers()) {
+                core::MeshNodeState node_state;
+                node_state.peer_id = peer.signature;
+
+                // Extract AnchorId if possible (mock logic from earlier in wavefrontd)
+                if (peer.signature.size() >= 4) {
+                    uint32_t pseudo_anchor_id = (peer.signature[0] << 24) | (peer.signature[1] << 16) | (peer.signature[2] << 8) | peer.signature[3];
+                    node_state.anchor_id = pseudo_anchor_id;
+                } else {
+                    node_state.anchor_id = std::nullopt;
+                }
+
+                node_state.mesh_density_local = mesh_density; // Using global/local approximation
+                node_state.trust_score = peer.ailee_score.consistency_score; // Just an example trust metric
+
+                // Fetch phase error and PLL lock status from distributed PLL if anchor exists
+                node_state.phase_error_deg = 0.0;
+                node_state.pll_locked = true;
+                node_state.coherence_stable = true; // Default to stable if no anchor
+
+                if (node_state.anchor_id) {
+                    for (const auto& pll_state : distributed_pll.node_states()) {
+                        if (pll_state.anchor_id == node_state.anchor_id.value()) {
+                            node_state.phase_error_deg = pll_state.phase_error_deg;
+                            node_state.pll_locked = pll_state.is_locked;
+                            break;
+                        }
+                    }
+
+                    // Check coherence clusters for stability
+                    for (const auto& cluster : clusters) {
+                        if (std::find(cluster.anchors.begin(), cluster.anchors.end(), node_state.anchor_id.value()) != cluster.anchors.end()) {
+                            node_state.coherence_stable = cluster.is_stable;
+                            break;
+                        }
+                    }
+                }
+
+                mesh_nodes.push_back(node_state);
+            }
+
+            orchestrator.set_mesh_nodes(mesh_nodes);
+            orchestrator.set_network_pll_locked(distributed_pll.is_network_locked());
+            orchestrator.set_coherence_clusters(clusters);
+            orchestrator.step(state.ts * 1000.0);
+
+            router.set_mesh_orchestrator_state(orchestrator);
+            safety_guardrails.update_mesh_health(
+                orchestrator.is_mesh_healthy(),
+                state.ts * 1000.0,
+                config.mesh_health_degraded_threshold_ms
             );
 
             // Pass anchor trust logic to router, wrapping single global trust as example
