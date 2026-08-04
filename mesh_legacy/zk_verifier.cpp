@@ -1,3 +1,5 @@
+// Licensed under the PolyForm Noncommercial License 1.0.0
+
 #include "zk_verifier.hpp"
 #include <iostream>
 #include <cmath>

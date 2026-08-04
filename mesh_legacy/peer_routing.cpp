@@ -1,3 +1,5 @@
+// Licensed under the PolyForm Noncommercial License 1.0.0
+
 #include "peer_routing.hpp"
 
 namespace wave_native {

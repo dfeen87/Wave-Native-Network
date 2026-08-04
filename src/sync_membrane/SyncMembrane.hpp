@@ -1,3 +1,5 @@
+// Licensed under the PolyForm Noncommercial License 1.0.0
+
 #ifndef WNN_SYNC_MEMBRANE_SYNC_MEMBRANE_HPP
 #define WNN_SYNC_MEMBRANE_SYNC_MEMBRANE_HPP
 

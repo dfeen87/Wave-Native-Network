@@ -1,3 +1,5 @@
+// Licensed under the PolyForm Noncommercial License 1.0.0
+
 #ifndef WNN_SPACE_SEGMENT_PHASE_COHERENCE_ANCHOR_HPP
 #define WNN_SPACE_SEGMENT_PHASE_COHERENCE_ANCHOR_HPP
 

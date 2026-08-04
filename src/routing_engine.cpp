@@ -1,3 +1,5 @@
+// Licensed under the PolyForm Noncommercial License 1.0.0
+
 #include "routing_engine.hpp"
 
 namespace wave_native {

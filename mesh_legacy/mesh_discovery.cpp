@@ -1,3 +1,5 @@
+// Licensed under the PolyForm Noncommercial License 1.0.0
+
 #include <mutex>
 #include "mesh_discovery.hpp"
 #include <iostream>

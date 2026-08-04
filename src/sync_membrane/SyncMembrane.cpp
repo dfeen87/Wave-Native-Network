@@ -1,3 +1,5 @@
+// Licensed under the PolyForm Noncommercial License 1.0.0
+
 #include "sync_membrane/SyncMembrane.hpp"
 #include <cmath>
 
