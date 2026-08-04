@@ -1,3 +1,5 @@
+// Licensed under the PolyForm Noncommercial License 1.0.0
+
 #ifndef WNN_INFRASTRUCTURE_SEGMENT_BARE_METAL_ENGINE_HPP
 #define WNN_INFRASTRUCTURE_SEGMENT_BARE_METAL_ENGINE_HPP
 

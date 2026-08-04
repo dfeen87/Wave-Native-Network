@@ -1,3 +1,5 @@
+// Licensed under the PolyForm Noncommercial License 1.0.0
+
 #include "mesh_orchestrator.hpp"
 #include <algorithm>
 #include <iostream>

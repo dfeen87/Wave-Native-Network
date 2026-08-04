@@ -1,3 +1,5 @@
+// Licensed under the PolyForm Noncommercial License 1.0.0
+
 #include "calibration.hpp"
 #include "wave_state.hpp"
 #include "../mesh_legacy/zk_verifier.hpp"

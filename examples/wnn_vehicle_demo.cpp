@@ -1,3 +1,5 @@
+// Licensed under the PolyForm Noncommercial License 1.0.0
+
 #include <iostream>
 #include <fstream>
 #include <iomanip>

@@ -1,3 +1,5 @@
+// Licensed under the PolyForm Noncommercial License 1.0.0
+
 #include "ambient_verifier.hpp"
 #include <cmath>
 #include <numeric>

@@ -1,3 +1,5 @@
+// Licensed under the PolyForm Noncommercial License 1.0.0
+
 #ifndef WNN_WAVE_NATIVE_NETWORK_HPP
 #define WNN_WAVE_NATIVE_NETWORK_HPP
 
