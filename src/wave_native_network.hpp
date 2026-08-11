@@ -1,4 +1,5 @@
-// Licensed under the PolyForm Noncommercial License 1.0.0
+// Copyright (c) Don Michael Feeney Jr.
+// Licensed under the MIT License.
 
 #ifndef WNN_WAVE_NATIVE_NETWORK_HPP
 #define WNN_WAVE_NATIVE_NETWORK_HPP

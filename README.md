@@ -1,6 +1,6 @@
 # Wave-Native Network (WNN)
 
-[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Build: C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)]()
 [![CI](https://github.com/dfeen87/Wave-Native-Network/actions/workflows/ci.yml/badge.svg)](https://github.com/dfeen87/Wave-Native-Network/actions)
 
@@ -123,6 +123,4 @@ I also wish to acknowledge Google for providing the ecosystem of advanced comput
 
 ## License
 
-This project is licensed under the **PolyForm Noncommercial License 1.0.0**. See the `LICENSE` file for the full terms.
-
-The license permits non-commercial use, including personal, educational, charitable, public research, public safety or health, environmental protection, and governmental uses. Commercial use is not granted by these terms; contact the project maintainers if you need commercial licensing.
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for the full terms.
