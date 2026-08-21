@@ -1,1 +1,7 @@
 build/
+node_modules/
+dist/
+*.trt
+*.bin
+__pycache__/
+.pytest_cache/
