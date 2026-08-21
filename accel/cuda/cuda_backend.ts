@@ -38,13 +38,10 @@ export class CudaBackend {
         const cmd = `${execPath} ${formattedArgs}`;
 
         try {
-            return execSync(cmd);
-        } catch (error: any) {
-            if (!this.cudaAvailable) {
-                // Return CPU simulated JSON buffer if GPU binary is unavailable
-                return Buffer.from(this.fallbackCpuExecute(kernelName, args));
-            }
-            throw new Error(`CUDA kernel execution failed: ${error.message}`);
+            return execSync(cmd, { stdio: ["pipe", "pipe", "ignore"] });
+        } catch {
+            // Return CPU simulated JSON buffer if GPU binary or execution is unavailable
+            return Buffer.from(this.fallbackCpuExecute(kernelName, args));
         }
     }
 

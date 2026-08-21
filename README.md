@@ -44,6 +44,19 @@ This is treated as an anomaly-scoring channel, not as a cryptographic primitive.
 
 ---
 
+## Framework Architecture & Acceleration Layer
+
+The repository provides a hardware-agnostic wave runtime alongside high-performance acceleration backends:
+
+- **`core/`**: Hardware-agnostic wave runtime, clock, buffers, transforms, multimodal streams, and pipeline orchestration.
+- **`accel/cuda/`**: CUDA kernels (`wave_convolution`, `spectral_transform`, `multimodal_fusion`) with CLI host harnesses and TypeScript backend.
+- **`accel/tensorrt/`**: Engine builder (`build_engine.py`), dual CLI/module inference (`infer.py`), and TypeScript backend with CPU fallbacks.
+- **`accel/nim/`**: FastAPI NIM microservice (`server.py`), Dockerfile, and TypeScript backend.
+- **`providers/` & `adapters/`**: `WaveAcceleratorProvider` and `CudaAdapter`, `TensorRTAdapter`, `NimAdapter`.
+- **`tests/`**: Jest and pytest unit/integration test suites covering core framework and acceleration backends.
+
+---
+
 ## Empirical Benchmarks & Simulation Results
 
 The repository includes a reproducible benchmarking suite (located in `/simulations/`) built to evaluate the overlay's performance. Current empirical highlights include:
