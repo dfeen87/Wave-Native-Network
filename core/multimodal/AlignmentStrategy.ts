@@ -2,6 +2,9 @@ import { WaveBuffer } from "../wave_runtime/WaveBuffer";
 
 export class AlignmentStrategy {
     public static resample(buffer: WaveBuffer, targetSampleRate: number): WaveBuffer {
+        if (!Number.isFinite(targetSampleRate) || targetSampleRate <= 0) {
+            throw new RangeError("targetSampleRate must be a positive, finite number.");
+        }
         if (buffer.sampleRate === targetSampleRate || buffer.length === 0) {
             return buffer.clone();
         }

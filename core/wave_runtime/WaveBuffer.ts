@@ -9,6 +9,9 @@ export class WaveBuffer {
     public sampleRate: number;
 
     constructor(data: Float32Array | number[], sampleRate: number = 44100, complexData?: ComplexNumber[]) {
+        if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+            throw new RangeError("sampleRate must be a positive, finite number.");
+        }
         this.data = data instanceof Float32Array ? data : new Float32Array(data);
         this.sampleRate = sampleRate;
         this.complexData = complexData;

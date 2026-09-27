@@ -3,6 +3,9 @@ export class WaveClock {
     private currentTick: number;
 
     constructor(sampleRate: number = 44100) {
+        if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+            throw new RangeError("sampleRate must be a positive, finite number.");
+        }
         this.sampleRate = sampleRate;
         this.currentTick = 0;
     }

@@ -6,6 +6,9 @@ export class PipelineGraph {
     private inDegree: Map<string, number> = new Map();
 
     public addNode(node: NodeInterface): void {
+        if (this.nodes.has(node.id)) {
+            throw new Error(`Node with id '${node.id}' already exists in graph.`);
+        }
         this.nodes.set(node.id, node);
         if (!this.adjacency.has(node.id)) {
             this.adjacency.set(node.id, []);
@@ -53,7 +56,7 @@ export class PipelineGraph {
         }
 
         if (result.length !== this.nodes.size) {
-            throw new Error("PipelineGraph contains a cycle or disconnected dependencies.");
+            throw new Error("PipelineGraph contains a cycle.");
         }
 
         return result;
