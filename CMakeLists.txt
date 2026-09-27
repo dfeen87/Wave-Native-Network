@@ -48,7 +48,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 add_subdirectory(simulations)
 
 # ---------------------------------------------------------
-# Wave Native Network Core (WNN v3.0.0)
+# Wave Native Network Core (WNN v3.1.0)
 # ---------------------------------------------------------
 file(GLOB_RECURSE WNN_CORE_SOURCES
     "${CMAKE_SOURCE_DIR}/src/space_segment/*.cpp"

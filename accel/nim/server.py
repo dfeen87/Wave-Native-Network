@@ -15,7 +15,7 @@ except ImportError:
     def infer(engine_path: str, input_data: np.ndarray):
         return input_data * 1.0
 
-app = FastAPI(title="WN-Accel NIM Microservice", version="3.0.0")
+app = FastAPI(title="WN-Accel NIM Microservice", version="3.1.0")
 
 @app.get("/health")
 def health_check():

@@ -1,6 +1,6 @@
 {
   "name": "wave-native-network",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Wave Native Acceleration Layer (WN-Accel) for Wave Native Network",
   "main": "dist/index.js",
   "scripts": {
