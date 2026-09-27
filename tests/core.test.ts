@@ -24,6 +24,11 @@ describe("Core Wave Native Framework Tests", () => {
             expect(clone.sampleRate).toBe(1000);
         });
 
+        test("rejects invalid sample rates", () => {
+            expect(() => WaveBuffer.zeros(1, 0)).toThrow(RangeError);
+            expect(() => new WaveClock(Number.NaN)).toThrow(RangeError);
+        });
+
         test("WaveClock tracks ticks and time accurately", () => {
             const clock = new WaveClock(100);
             expect(clock.getTime()).toBe(0);
@@ -44,6 +49,14 @@ describe("Core Wave Native Framework Tests", () => {
 
             expect(output.length).toBe(5);
             expect(output.data[2]).toBeCloseTo(6.0); // 2*0.5 + 3*1.0 + 4*0.5 = 6.0
+        });
+
+        test("ConvolutionTransform supports even-length kernels", () => {
+            const input = WaveBuffer.fromArray([1, 2, 3, 4], 100);
+            const output = new ConvolutionTransform([1, 2]).apply(input);
+
+            expect(output.toArray()).toEqual([2, 5, 8, 11]);
+            expect(output.toArray().every(Number.isFinite)).toBe(true);
         });
 
         test("SpectralTransform computes DFT magnitudes", () => {
@@ -73,6 +86,12 @@ describe("Core Wave Native Framework Tests", () => {
             const resampled = AlignmentStrategy.resample(buf, 200);
             expect(resampled.sampleRate).toBe(200);
             expect(resampled.length).toBe(8);
+        });
+
+        test("AlignmentStrategy rejects invalid target rates before allocating", () => {
+            const buf = WaveBuffer.fromArray([1, 2], 100);
+            expect(() => AlignmentStrategy.resample(buf, 0)).toThrow(RangeError);
+            expect(() => AlignmentStrategy.resample(buf, Number.POSITIVE_INFINITY)).toThrow(RangeError);
         });
 
         test("MultimodalNode fuses two streams", () => {
@@ -114,6 +133,17 @@ describe("Core Wave Native Framework Tests", () => {
             const output = await executor.execute(input);
 
             expect(output.toArray()).toEqual([6, 12, 18]);
+        });
+
+        test("PipelineGraph rejects duplicate node identifiers", () => {
+            const graph = new PipelineGraph();
+            const node: NodeInterface = {
+                id: "duplicate",
+                process: input => input
+            };
+
+            graph.addNode(node);
+            expect(() => graph.addNode(node)).toThrow("already exists");
         });
     });
 });

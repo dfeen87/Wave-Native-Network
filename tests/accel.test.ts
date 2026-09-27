@@ -31,6 +31,11 @@ describe("WN-Accel Acceleration Layer Tests", () => {
             expect(result[2]).toBeCloseTo(6.0);
         });
 
+        test("convolve supports even-length kernels", () => {
+            const adapter = new CudaAdapter();
+            expect(adapter.convolve([1, 2, 3, 4], [1, 2])).toEqual([2, 5, 8, 11]);
+        });
+
         test("spectralTransform executes spectral transform", () => {
             const adapter = new CudaAdapter();
             const result = adapter.spectralTransform([1, 0, -1, 0]);

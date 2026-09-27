@@ -18,10 +18,10 @@ export class ConvolutionTransform implements TransformInterface {
 
         for (let idx = 0; idx < n; idx++) {
             let sum = 0;
-            for (let i = -half; i <= half; i++) {
-                const s = idx + i;
+            for (let kernelIdx = 0; kernelIdx < k; kernelIdx++) {
+                const s = idx + kernelIdx - half;
                 if (s >= 0 && s < n) {
-                    sum += signal[s] * this.kernel[i + half];
+                    sum += signal[s] * this.kernel[kernelIdx];
                 }
             }
             output[idx] = sum;

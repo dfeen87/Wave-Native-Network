@@ -1,4 +1,3 @@
-import axios from "axios";
 import { NimBackend } from "../accel/nim/nim_backend";
 
 export class NimAdapter {

@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
 
@@ -11,7 +11,7 @@ export class CudaBackend {
 
     private checkCudaAvailability(): boolean {
         try {
-            execSync("which nvcc", { stdio: "ignore" });
+            execFileSync("nvcc", ["--version"], { stdio: "ignore" });
             return true;
         } catch {
             return false;
@@ -34,11 +34,8 @@ export class CudaBackend {
             execPath = altPath;
         }
 
-        const formattedArgs = args.map(arg => `'${arg}'`).join(" ");
-        const cmd = `${execPath} ${formattedArgs}`;
-
         try {
-            return execSync(cmd, { stdio: ["pipe", "pipe", "ignore"] });
+            return execFileSync(execPath, args, { stdio: ["pipe", "pipe", "ignore"] });
         } catch {
             // Return CPU simulated JSON buffer if GPU binary or execution is unavailable
             return Buffer.from(this.fallbackCpuExecute(kernelName, args));
@@ -56,10 +53,10 @@ export class CudaBackend {
                 const out: number[] = new Array(n).fill(0);
                 for (let idx = 0; idx < n; idx++) {
                     let sum = 0;
-                    for (let i = -half; i <= half; i++) {
-                        const s = idx + i;
+                    for (let kernelIdx = 0; kernelIdx < k; kernelIdx++) {
+                        const s = idx + kernelIdx - half;
                         if (s >= 0 && s < n) {
-                            sum += signal[s] * kernel[i + half];
+                            sum += signal[s] * kernel[kernelIdx];
                         }
                     }
                     out[idx] = sum;

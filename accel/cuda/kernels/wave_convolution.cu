@@ -13,10 +13,10 @@ void waveConvolution(const float* signal, const float* kernel, float* output, in
     float sum = 0.0f;
     int half = k / 2;
 
-    for (int i = -half; i <= half; i++) {
-        int s = idx + i;
+    for (int kernel_idx = 0; kernel_idx < k; kernel_idx++) {
+        int s = idx + kernel_idx - half;
         if (s >= 0 && s < n) {
-            sum += signal[s] * kernel[i + half];
+            sum += signal[s] * kernel[kernel_idx];
         }
     }
     output[idx] = sum;

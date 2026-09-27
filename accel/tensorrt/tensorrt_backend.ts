@@ -1,5 +1,4 @@
-import { execSync } from "child_process";
-import fs from "fs";
+import { execFileSync } from "child_process";
 import path from "path";
 
 export class TensorRTBackend {
@@ -12,11 +11,9 @@ export class TensorRTBackend {
     }
 
     public infer(signal: number[]): number[] {
-        const inputJson = JSON.stringify({ signal });
-        const command = `python3 "${this.scriptPath}" "${this.enginePath}" '${inputJson}'`;
-
         try {
-            const stdout = execSync(command, { encoding: "utf-8" });
+            const inputJson = JSON.stringify({ signal });
+            const stdout = execFileSync("python3", [this.scriptPath, this.enginePath, inputJson], { encoding: "utf-8" });
             const parsed = JSON.parse(stdout);
             return parsed.output || [];
         } catch (error: any) {
